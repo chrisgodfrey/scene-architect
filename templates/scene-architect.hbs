@@ -52,10 +52,32 @@
         </li>
         <li>Upload the PNG directly to ChatGPT or another image model, paste the copied prompt, and ask it to generate the image.</li>
         <li>
-          Download the finished PNG, JPEG or WebP, then
-          <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import finished artwork</button>
+          Download the finished PNG, JPEG or WebP.
         </li>
       </ol>
+      {{#if hasArtworkReview}}
+        <div class="sa-status review">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <strong>{{reviewStatus}}</strong>
+          {{#if reviewDimensions}} · Source image: {{reviewDimensions}}{{/if}}
+        </div>
+        <p>Show Foundry's grid and compare it with the artwork. Reject images with a baked grid, perspective distortion, missing rooms, invented walls or blocked passages.</p>
+        <div class="sa-actions sa-wrap">
+          <button type="button" data-action="beginAlignment" class="sa-primary">
+            <i class="fa-solid fa-ruler-combined"></i>
+            {{#if alignmentActive}}Continue wall alignment{{else}}Begin wall alignment{{/if}}
+          </button>
+          <button type="button" data-action="applyAlignment"><i class="fa-solid fa-check"></i> Validate and apply</button>
+          <button type="button" data-action="restoreGeometry"><i class="fa-solid fa-rotate-left"></i> Restore original walls</button>
+          <button type="button" data-action="rejectArtwork"><i class="fa-solid fa-trash"></i> Reject artwork</button>
+          {{#if alignmentApplied}}
+            <button type="button" data-action="importArtwork"><i class="fa-solid fa-image"></i> Review different artwork</button>
+          {{/if}}
+        </div>
+        <p class="hint">Alignment uses Foundry's native wall tools. Coordinates snap to half-grid increments, connected endpoints move together, and adding or deleting walls is blocked until alignment is applied or rejected.</p>
+      {{else}}
+        <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import artwork for review</button>
+      {{/if}}
       <details>
         <summary>Advanced: download source files separately</summary>
         <div class="sa-actions sa-wrap">
@@ -71,6 +93,6 @@
   </section>
 
   <section class="sa-section sa-footer-note">
-    <strong>Geometry is authoritative.</strong> The final artwork is only a skin. Scene Architect keeps the grid, walls, doors, windows and lights as Foundry documents.
+    <strong>Review before applying.</strong> Generated artwork can drift. Scene Architect preserves the original geometry and validates aligned walls before accepting changes.
   </section>
 </div>

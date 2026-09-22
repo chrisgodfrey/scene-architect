@@ -352,7 +352,8 @@ GEOMETRY CONSTRAINTS:
 - Black lines indicate walls. Blue segments indicate doors. Purple segments indicate secret doors. Cyan segments indicate windows. Green segments indicate terrain boundaries.
 - Do not reproduce guide colours, labels, outlines, dots, or magenta rectangles in the finished artwork.
 - Keep the exact ${W}:${H} aspect ratio. The intended scene is ${plan.scene.columns}×${plan.scene.rows} squares (${W}×${H}px).
-- Do not draw a visible grid.
+- Do not draw square floor tiles, graph lines, tactical grids, evenly spaced seams, or any repeated pattern that could be mistaken for a movement grid.
+- Use irregular slabs, continuous surfaces, natural rock, stains, debris, and non-periodic material texture.
 - Keep doors and openings centred on their guide positions.
 - Use magenta rectangles only as placement references for the described objects.
 
@@ -405,6 +406,111 @@ async function setLevelBackground(scene, path) {
   await scene.update({"background.src":path});
 }
 
+function getLevelBackground(scene) {
+  return scene.firstLevel?.background?.src || scene.background?.src || "";
+}
+
+function snapshotWalls(scene) {
+  return [...scene.walls].map(wall=>{
+    if(typeof wall.toObject==="function") return wall.toObject();
+    return {_id:wall.id,c:[...wall.c],door:wall.door};
+  });
+}
+
+function wallCoordinatesEqual(a,b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length===4 && a.every((value,index)=>value===b[index]);
+}
+
+function pointKey(x,y) {
+  return `${x},${y}`;
+}
+
+function validateAlignment(scene,review) {
+  const errors=[];
+  const originalById=new Map((review.originalWalls || []).map(wall=>[wall._id,wall]));
+  const currentById=new Map([...scene.walls].map(wall=>[wall.id,wall]));
+  const halfGrid=Number(scene.grid.size)/2;
+  const width=Number(scene.width);
+  const height=Number(scene.height);
+  let wallsMoved=0;
+  let endpointsMoved=0;
+  let doorsMoved=0;
+  let maxDisplacement=0;
+
+  if(currentById.size!==originalById.size) errors.push("The number of walls changed during alignment.");
+
+  for(const [id,original] of originalById) {
+    const wall=currentById.get(id);
+    if(!wall) {
+      errors.push(`Wall ${id} is missing.`);
+      continue;
+    }
+    const c=[...wall.c];
+    if(c.length!==4 || c.some(value=>!Number.isFinite(value))) {
+      errors.push(`Wall ${id} has invalid coordinates.`);
+      continue;
+    }
+    if(c[0]===c[2] && c[1]===c[3]) errors.push(`Wall ${id} has zero length.`);
+    if(c.some((value,index)=>value<0 || value>(index%2===0?width:height))) errors.push(`Wall ${id} lies outside the scene.`);
+    if(c.some(value=>Math.abs(value/halfGrid-Math.round(value/halfGrid))>0.001)) errors.push(`Wall ${id} is not aligned to the half-grid.`);
+    if(wall.door!==original.door) errors.push(`Wall ${id} changed its door type during alignment.`);
+    if(!wallCoordinatesEqual(original.c,c)) {
+      wallsMoved++;
+      if(wall.door!==CONST.WALL_DOOR_TYPES.NONE) doorsMoved++;
+      for(let endpoint=0;endpoint<2;endpoint++) {
+        const offset=endpoint*2;
+        const distance=Math.hypot(c[offset]-original.c[offset],c[offset+1]-original.c[offset+1]);
+        if(distance>0) endpointsMoved++;
+        maxDisplacement=Math.max(maxDisplacement,distance/Number(scene.grid.size));
+      }
+    }
+  }
+
+  const originalConnections=new Map();
+  for(const wall of originalById.values()) {
+    for(let endpoint=0;endpoint<2;endpoint++) {
+      const offset=endpoint*2;
+      const key=pointKey(wall.c[offset],wall.c[offset+1]);
+      const refs=originalConnections.get(key) || [];
+      refs.push({id:wall._id,endpoint});
+      originalConnections.set(key,refs);
+    }
+  }
+  for(const refs of originalConnections.values()) {
+    if(refs.length<2) continue;
+    const currentPoints=refs.map(ref=>{
+      const wall=currentById.get(ref.id);
+      const offset=ref.endpoint*2;
+      return wall ? pointKey(wall.c[offset],wall.c[offset+1]) : null;
+    });
+    if(new Set(currentPoints).size>1) errors.push(`A connected wall junction containing ${refs[0].id} was separated.`);
+  }
+
+  return {errors,wallsMoved,endpointsMoved,doorsMoved,maxDisplacement};
+}
+
+async function restoreWallSnapshot(scene,walls) {
+  const expected=new Map(walls.map(wall=>[wall._id,wall]));
+  const existing=new Set([...scene.walls].map(wall=>wall.id));
+  const deletions=[...existing].filter(id=>!expected.has(id));
+  const updates=walls.filter(wall=>existing.has(wall._id)).map(wall=>({_id:wall._id,c:[...wall.c]}));
+  const creations=walls.filter(wall=>!existing.has(wall._id));
+  if(deletions.length) await scene.deleteEmbeddedDocuments("Wall",deletions,{sceneArchitectPropagation:true});
+  if(updates.length) await scene.updateEmbeddedDocuments("Wall",updates,{sceneArchitectPropagation:true});
+  if(creations.length) await scene.createEmbeddedDocuments("Wall",creations,{keepId:true,sceneArchitectPropagation:true});
+}
+
+function isAlignmentActive(scene) {
+  return scene?.getFlag(MODULE_ID,"artworkReview")?.status==="aligning";
+}
+
+function isArtworkReviewOpen(scene) {
+  const status=scene?.getFlag(MODULE_ID,"artworkReview")?.status;
+  return status==="review" || status==="aligning";
+}
+
+const pendingAlignmentMoves=new Map();
+
 class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS={
     id:"scene-architect-app",
@@ -421,25 +527,45 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
       exportGuide:this.#exportGuide,
       copyArtPrompt:this.#copyArtPrompt,
       downloadPlan:this.#downloadPlan,
-      importArtwork:this.#importArtwork
+      importArtwork:this.#importArtwork,
+      beginAlignment:this.#beginAlignment,
+      applyAlignment:this.#applyAlignment,
+      restoreGeometry:this.#restoreGeometry,
+      rejectArtwork:this.#rejectArtwork
     }
   };
   static PARTS={main:{template:`modules/${MODULE_ID}/templates/scene-architect.hbs`}};
 
   constructor(options={}) {
     super(options);
-    this.workflow={sceneName:"New Scene",columns:34,rows:28,gridSize:70,brief:"",plan:null,sceneId:null};
+    const scene=globalThis.canvas?.scene;
+    const plan=scene?.getFlag(MODULE_ID,"plan") || null;
+    this.workflow={
+      sceneName:plan?.scene?.name || "New Scene",
+      columns:plan?.scene?.columns || 34,
+      rows:plan?.scene?.rows || 28,
+      gridSize:plan?.scene?.gridSize || 70,
+      brief:plan?.scene?.description || "",
+      plan,
+      sceneId:plan ? scene.id : null
+    };
   }
 
   async _prepareContext(_options) {
     const scene=this.workflow.sceneId ? game.scenes.get(this.workflow.sceneId) : null;
+    const review=scene?.getFlag(MODULE_ID,"artworkReview") || null;
     return {
       sceneName:this.workflow.sceneName,columns:this.workflow.columns,rows:this.workflow.rows,gridSize:this.workflow.gridSize,brief:this.workflow.brief,
       hasPlan:!!this.workflow.plan,
       planSummary:this.workflow.plan ? `${this.workflow.plan.spaces.length} spaces, ${this.workflow.plan.openings.length} openings, ${this.workflow.plan.features.length} features, ${this.workflow.plan.lights.length} lights.` : "",
       planJson:this.workflow.plan ? JSON.stringify(this.workflow.plan,null,2) : "",
       sceneReady:!!scene,
-      sceneNameLinked:scene?.name || ""
+      sceneNameLinked:scene?.name || "",
+      hasArtworkReview:!!review,
+      alignmentActive:review?.status==="aligning",
+      alignmentApplied:review?.status==="applied",
+      reviewStatus:review?.status==="aligning" ? "Alignment mode active" : review?.status==="applied" ? "Alignment applied" : "Artwork awaiting review",
+      reviewDimensions:review?.actualWidth ? `${review.actualWidth}×${review.actualHeight}px` : ""
     };
   }
 
@@ -582,11 +708,16 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #importArtwork() {
     const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
     const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    const existingReview=scene.getFlag(MODULE_ID,"artworkReview");
+    if(existingReview && existingReview.status!=="applied") {
+      ui.notifications.warn(`${MODULE_TITLE}: apply or reject the current artwork before importing another image.`);
+      return;
+    }
     const expectedW=plan.scene.columns*plan.scene.gridSize, expectedH=plan.scene.rows*plan.scene.gridSize;
     const result=await DialogV2.wait({
       window:{title:"Import finished artwork"},modal:true,
-      content:`<p>Expected canvas: <strong>${expectedW}×${expectedH}px</strong>.</p><input type="file" name="artwork" accept="image/png,image/jpeg,image/webp" style="width:100%"><p class="hint">The image may be globally scaled to the scene canvas, but Scene Architect cannot repair local geometry distortion introduced by the art model.</p>`,
-      buttons:[{action:"import",label:"Import Artwork",icon:"fa-solid fa-upload",default:true,callback:(_e,button)=>button.form.elements.artwork.files?.[0]||null},{action:"cancel",label:"Cancel"}],
+      content:`<p>Expected canvas: <strong>${expectedW}×${expectedH}px</strong>.</p><input type="file" name="artwork" accept="image/png,image/jpeg,image/webp" style="width:100%"><p class="hint">The artwork will be staged for review. Existing wall geometry is preserved until you explicitly apply an alignment.</p>`,
+      buttons:[{action:"import",label:"Import for Review",icon:"fa-solid fa-upload",default:true,callback:(_e,button)=>button.form.elements.artwork.files?.[0]||null},{action:"cancel",label:"Cancel"}],
       rejectClose:false
     });
     if(!result || result==="cancel") return;
@@ -596,12 +727,114 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
       try { const bmp=await createImageBitmap(file); actualW=bmp.width; actualH=bmp.height; bmp.close(); } catch(_) {}
       if(actualW && (actualW!==expectedW || actualH!==expectedH)) ui.notifications.warn(`${MODULE_TITLE}: artwork is ${actualW}×${actualH}, expected ${expectedW}×${expectedH}. Foundry will fit it to the scene, but inspect alignment.`);
       const path=await uploadBlobToWorld(`${slugify(scene.name)}-art-${Date.now()}.${(file.name.split('.').pop()||'webp').toLowerCase()}`,file);
+      const review={
+        status:"review",
+        originalBackground:getLevelBackground(scene),
+        originalWalls:snapshotWalls(scene),
+        originalArtworkPath:scene.getFlag(MODULE_ID,"artworkPath") || null,
+        artworkPath:path,
+        actualWidth:actualW,
+        actualHeight:actualH,
+        importedAt:Date.now()
+      };
       await setLevelBackground(scene,path);
       await scene.setFlag(MODULE_ID,"artworkPath",path);
-      ui.notifications.info(`${MODULE_TITLE}: artwork installed. Walls, doors and lights were not moved.`);
+      await scene.setFlag(MODULE_ID,"artworkReview",review);
+      ui.notifications.info(`${MODULE_TITLE}: artwork staged for review. Check the grid and layout before aligning walls.`,{permanent:true});
       if(scene.isView) await canvas.draw();
+      await this.render();
     } catch(err) {
       console.error(`${MODULE_ID} | artwork import failed`,err);
+      ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+    }
+  }
+
+  /** @this {SceneArchitectApp} */
+  static async #beginAlignment() {
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const review=scene.getFlag(MODULE_ID,"artworkReview"); if(!review) return;
+    try {
+      await scene.setFlag(MODULE_ID,"artworkReview",{...review,status:"aligning"});
+      await scene.view();
+      canvas.walls?.activate();
+      if(typeof this.minimize==="function") await this.minimize();
+      ui.notifications.info(`${MODULE_TITLE}: wall alignment active. Native wall edits snap to half-grid; connected endpoints move together.`,{permanent:true});
+    } catch(err) {
+      console.error(`${MODULE_ID} | Could not begin alignment`,err);
+      ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+    }
+  }
+
+  /** @this {SceneArchitectApp} */
+  static async #applyAlignment() {
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const review=scene.getFlag(MODULE_ID,"artworkReview"); if(!review) return;
+    try {
+      const validation=validateAlignment(scene,review);
+      if(validation.errors.length) {
+        console.error(`${MODULE_ID} | Alignment validation failed`,validation.errors);
+        await DialogV2.wait({
+          window:{title:`${MODULE_TITLE}: Alignment needs attention`},
+          content:`<p>Fix these issues before applying:</p><ul>${validation.errors.map(error=>`<li>${esc(error)}</li>`).join("")}</ul>`,
+          buttons:[{action:"close",label:"Close",default:true}],
+          rejectClose:false
+        });
+        return;
+      }
+      const summary=`${validation.wallsMoved} walls moved, ${validation.endpointsMoved} endpoints moved, ${validation.doorsMoved} doors repositioned, maximum displacement ${validation.maxDisplacement.toFixed(1)} grid squares.`;
+      const confirmed=await DialogV2.confirm({
+        window:{title:`${MODULE_TITLE}: Apply alignment`},
+        content:`<p>${esc(summary)}</p><p>The original geometry will remain available for restoration.</p>`,
+        yes:{label:"Apply Alignment",icon:"fa-solid fa-check"},
+        no:{label:"Keep Editing"}
+      });
+      if(!confirmed) return;
+      await scene.setFlag(MODULE_ID,"artworkReview",{...review,status:"applied",alignedWalls:snapshotWalls(scene),appliedAt:Date.now()});
+      ui.notifications.info(`${MODULE_TITLE}: alignment applied. ${summary}`,{permanent:true});
+      await this.render();
+    } catch(err) {
+      console.error(`${MODULE_ID} | Could not apply alignment`,err);
+      ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+    }
+  }
+
+  /** @this {SceneArchitectApp} */
+  static async #restoreGeometry() {
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const review=scene.getFlag(MODULE_ID,"artworkReview"); if(!review?.originalWalls) return;
+    try {
+      await restoreWallSnapshot(scene,review.originalWalls);
+      await scene.setFlag(MODULE_ID,"artworkReview",{...review,status:"review"});
+      ui.notifications.info(`${MODULE_TITLE}: original wall geometry restored. The artwork remains staged for review.`);
+      await this.render();
+    } catch(err) {
+      console.error(`${MODULE_ID} | Could not restore geometry`,err);
+      ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+    }
+  }
+
+  /** @this {SceneArchitectApp} */
+  static async #rejectArtwork() {
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const review=scene.getFlag(MODULE_ID,"artworkReview"); if(!review) return;
+    try {
+      const confirmed=await DialogV2.confirm({
+        window:{title:`${MODULE_TITLE}: Reject artwork`},
+        content:"<p>Restore the original walls and previous background, then discard this artwork review?</p>",
+        yes:{label:"Reject Artwork",icon:"fa-solid fa-trash"},
+        no:{label:"Cancel"}
+      });
+      if(!confirmed) return;
+      await restoreWallSnapshot(scene,review.originalWalls || []);
+      await setLevelBackground(scene,review.originalBackground || scene.getFlag(MODULE_ID,"guidePath"));
+      await scene.unsetFlag(MODULE_ID,"artworkReview");
+      if(review.originalArtworkPath) await scene.setFlag(MODULE_ID,"artworkPath",review.originalArtworkPath);
+      else await scene.unsetFlag(MODULE_ID,"artworkPath");
+      if(scene.isView) await canvas.draw();
+      ui.notifications.info(`${MODULE_TITLE}: artwork rejected and previous scene restored.`);
+      await this.render();
+    } catch(err) {
+      console.error(`${MODULE_ID} | Could not reject artwork`,err);
       ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
     }
   }
@@ -620,7 +853,7 @@ async function launch() {
 }
 
 Hooks.once("init",()=>{
-  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.6`);
+  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.7`);
   game.settings.register(MODULE_ID,"enabled",{name:"Enable Scene Architect",scope:"world",config:true,type:Boolean,default:true,restricted:true});
 });
 
@@ -640,6 +873,81 @@ Hooks.on("renderSceneDirectory",(app,element)=>{
   }
 });
 
+Hooks.on("preCreateWall",(wall,_data,options)=>{
+  if(options?.sceneArchitectPropagation) return;
+  if(!isArtworkReviewOpen(wall.parent)) return;
+  ui.notifications.warn(`${MODULE_TITLE}: apply or reject the artwork review before adding walls.`);
+  return false;
+});
+
+Hooks.on("preDeleteWall",(wall,options)=>{
+  if(options?.sceneArchitectPropagation) return;
+  if(!isArtworkReviewOpen(wall.parent)) return;
+  ui.notifications.warn(`${MODULE_TITLE}: apply or reject the artwork review before deleting walls.`);
+  return false;
+});
+
+Hooks.on("preUpdateWall",(wall,changes,options)=>{
+  if(options?.sceneArchitectPropagation || !isArtworkReviewOpen(wall.parent)) return;
+  pendingAlignmentMoves.delete(wall.uuid);
+  if(!isAlignmentActive(wall.parent)) {
+    ui.notifications.warn(`${MODULE_TITLE}: select Begin wall alignment before editing walls.`);
+    return false;
+  }
+  const changedFields=Object.keys(changes).filter(key=>key!=="_id" && key!=="c");
+  if(changedFields.length) {
+    ui.notifications.warn(`${MODULE_TITLE}: alignment mode only permits moving existing walls and doors.`);
+    return false;
+  }
+  if(!Array.isArray(changes.c)) return;
+  const step=Number(wall.parent.grid.size)/2;
+  const previous=[...wall.c];
+  const snapped=changes.c.map(value=>Math.round(Number(value)/step)*step);
+  changes.c=snapped;
+  const moves=[];
+  for(let endpoint=0;endpoint<2;endpoint++) {
+    const offset=endpoint*2;
+    const from=[previous[offset],previous[offset+1]];
+    const to=[snapped[offset],snapped[offset+1]];
+    if(from[0]!==to[0] || from[1]!==to[1]) moves.push({from,to});
+  }
+  if(moves.length) pendingAlignmentMoves.set(wall.uuid,moves);
+});
+
+Hooks.on("updateWall",async (wall,_changes,options)=>{
+  const moves=pendingAlignmentMoves.get(wall.uuid);
+  pendingAlignmentMoves.delete(wall.uuid);
+  if(options?.sceneArchitectPropagation || !isAlignmentActive(wall.parent)) return;
+  if(!moves?.length) return;
+
+  const updates=new Map();
+  for(const other of wall.parent.walls) {
+    if(other.id===wall.id) continue;
+    const coordinates=[...other.c];
+    let changed=false;
+    for(let endpoint=0;endpoint<2;endpoint++) {
+      const offset=endpoint*2;
+      for(const move of moves) {
+        if(coordinates[offset]===move.from[0] && coordinates[offset+1]===move.from[1]) {
+          coordinates[offset]=move.to[0];
+          coordinates[offset+1]=move.to[1];
+          changed=true;
+          break;
+        }
+      }
+    }
+    if(changed) updates.set(other.id,{_id:other.id,c:coordinates});
+  }
+  if(updates.size) {
+    try {
+      await wall.parent.updateEmbeddedDocuments("Wall",[...updates.values()],{sceneArchitectPropagation:true});
+    } catch(err) {
+      console.error(`${MODULE_ID} | Connected wall propagation failed`,err);
+      ui.notifications.error(`${MODULE_TITLE}: connected wall movement failed. Restore the original geometry before continuing.`);
+    }
+  }
+});
+
 Hooks.once("ready",()=>{
-  game.modules.get(MODULE_ID).api={launch,compileGeometry,validatePlan,buildLayoutPrompt,buildArtPrompt};
+  game.modules.get(MODULE_ID).api={launch,compileGeometry,validatePlan,validateAlignment,buildLayoutPrompt,buildArtPrompt};
 });
