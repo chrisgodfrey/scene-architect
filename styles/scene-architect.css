@@ -15,7 +15,7 @@
 .scene-architect .sa-steps button { margin: 4px 0; width: auto; }
 .scene-architect .sa-status { padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.05); }
 .scene-architect .sa-status.good { background: rgba(60, 180, 100, .12); }
-.scene-architect .sa-status.review { margin-top: 12px; background: rgba(255, 180, 0, .14); }
+.scene-architect .sa-status.warning { margin-top: 10px; background: rgba(255, 170, 0, .16); }
 .scene-architect .hint { opacity: .76; margin: 8px 0 0; font-size: .9em; }
 .scene-architect details { margin-top: 8px; }
 .scene-architect pre { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: .8em; background: rgba(0,0,0,.25); padding: 8px; border-radius: 5px; }

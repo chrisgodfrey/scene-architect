@@ -3,11 +3,10 @@ title: Scene Architect v0.1 alpha
 description: Foundry VTT v14 module for generating grid-exact scenes from structured layouts
 ---
 
-A Foundry VTT v14 module prototype for the workflow:
+A Foundry VTT v14 module prototype for deterministic scene geometry:
 
 **human brief → frontier web model → grid-exact JSON → deterministic Foundry
-Scene → edit native walls → download PNG guide → frontier image model →
-review artwork → align walls → validate and apply**
+Scene → edit native walls, doors, windows and lights**
 
 ## What this alpha does
 
@@ -25,69 +24,34 @@ review artwork → align walls → validate and apply**
 * Lets you edit those walls with normal Foundry tools
 * Exports an SVG art guide from the **live Foundry wall geometry**, so manual
   corrections are preserved
-* Converts the live SVG geometry into a PNG guide that image models can inspect
-  directly
-* Copies an image-generation prompt that explicitly forbids scripts and
-  programmatic drawing
-* Stages the finished PNG, JPEG, or WebP for review before changing geometry
-* Aligns native walls to artwork using half-grid snapping while preserving
-  connected endpoints and the original topology
-* Validates adjusted walls and keeps the original geometry recoverable
+* Exports the plan JSON and live SVG geometry for use in other tools
+* Provides an explicitly experimental PNG handoff for external image generators
+* Optionally imports external artwork as an unmanaged background
 
-## Art-generation workflow
+## Deterministic workflow
 
 After selecting **Build draft scene**:
 
 1. Review the generated scene and adjust its native walls or doors if needed.
-2. Select **Download PNG guide + copy image prompt** and save the PNG when
-   prompted.
-3. Upload the downloaded PNG directly to ChatGPT or another image model.
-4. Paste the prompt that Scene Architect copied to your clipboard.
-5. Generate and download the finished battlemap.
-6. Return to Scene Architect and select **Import artwork for review**.
-7. Show Foundry's movement grid and inspect the artwork for a baked grid,
-   perspective distortion, missing rooms, invented walls, or blocked passages.
-8. Reject unsuitable artwork, or select **Begin wall alignment**.
-9. Use Foundry's native wall tools to align the existing walls. Scene Architect
-   snaps coordinates to half-grid increments and moves connected endpoints
-   together.
-10. Select **Validate and apply** when the walls match the artwork.
+2. Edit walls, doors, windows and lights using Foundry's native tools.
+3. Use the generated wireframe as a planning background or export the live SVG
+   and plan JSON for another mapmaking workflow.
 
-The PNG is generated from the scene's live Foundry wall geometry. Unlike an
-archive containing SVG and JSON documents, it is presented directly to the
-model as an image-generation reference. The copied prompt contains the room and
-feature descriptions and explicitly instructs the model to generate raster
-artwork rather than write code or redraw the map with vector primitives.
+## Experimental artwork handoff
 
-On browsers that support the File System Access API, Scene Architect opens a
-native **Save As** picker. On other browsers, it stores the PNG in the Foundry
-world data and displays a permanent download link.
+General-purpose image generators do not reliably preserve exact externally
+supplied geometry. They may move walls and doors, alter room dimensions, invent
+or remove passages, introduce perspective, or bake a conflicting grid into the
+image. Scene Architect does not claim to correct those failures.
 
-The individual SVG, prompt, and JSON exports remain available under the
-advanced section.
+The optional **Experimental artwork handoff** can export a PNG guide and prompt,
+then import a returned image as an unmanaged background. Use it only when you
+accept that the result may not align with Foundry's geometry. Always inspect the
+background against the movement grid and native walls before play.
 
-## Artwork review and alignment
-
-Imported artwork is staged rather than immediately accepted. Scene Architect
-stores the original background and wall coordinates before displaying the
-candidate image.
-
-During alignment:
-
-* Existing walls and doors can be repositioned with Foundry's native wall tools
-* Coordinates snap to half-grid increments
-* Wall endpoints that were connected in the original scene remain connected
-* Creating or deleting walls is blocked to preserve room topology
-* The movement grid remains visible as an independent tactical reference
-
-Before applying, Scene Architect checks for missing walls, zero-length
-segments, out-of-bounds coordinates, off-snap coordinates, and separated wall
-junctions. It reports how many walls, endpoints, and doors moved, together with
-the maximum displacement.
-
-Select **Restore original walls** to undo alignment while keeping the candidate
-artwork visible. Select **Reject artwork** to restore both the original walls
-and planning background.
+On browsers that support the File System Access API, the PNG export opens a
+native **Save As** picker. On other browsers, Scene Architect stores the PNG in
+the Foundry world data and displays a permanent download link.
 
 ## Installation
 
@@ -131,27 +95,26 @@ Foundry is stopped.
 
 This is an **alpha built against the documented Foundry v14.365 public API**, but it has not been runtime-tested inside your specific Foundry installation yet. Make a world backup before using it in your main campaign world.
 
-Generated artwork is never accepted automatically. Review it against Foundry's
-movement grid before aligning or applying wall changes.
+Scene Architect guarantees only the deterministic Foundry documents it creates.
+External image-generation behavior is outside that guarantee.
 
 ## Current limitations
 
-- Rectilinear room model only. Spaces are axis-aligned rectangles.
-- The external web model proposes the structured layout; the module validates and compiles it.
-- Features are guide annotations, not Foundry Tiles yet.
-* Final AI artwork can still distort geometry or contain unusable architecture;
-  reject and regenerate unsuitable results
-* Alignment adjusts Foundry walls but does not rewrite the original rectangular
-  room definitions
-* Global image calibration is limited to Foundry's normal scene background
-  fitting
-* No native AI/API integration by design
+* Rectilinear room model only. Spaces are axis-aligned rectangles
+* The external web model proposes the structured layout; the module validates
+  and compiles it
+* Features are guide annotations, not Foundry Tiles yet
+* External artwork is unmanaged and may not match the scene geometry
+* No automatic round trip from manually moved walls back into room rectangle
+  definitions. The exported SVG uses live wall coordinates
+* No native AI or image-generation API integration by design
 
 ## Likely v0.2 work
 
-- Open an existing Scene Architect scene after closing the wizard.
-- Native room/feature editing palette.
-- Export semantic masks (floor/wall/door/window/features) separately.
-- Better light defaults and light preview.
-- Feature → Tile placeholders.
-- Support polygons/diagonal walls while retaining exact grid-edge constraints.
+* Open an existing Scene Architect scene after closing the wizard
+* Native room and feature editing palette
+* Export semantic masks for floors, walls, doors, windows and features
+* Better light defaults and light preview
+* Feature-to-Tile placeholders
+* Support polygons and diagonal walls while retaining exact grid-edge
+  constraints
