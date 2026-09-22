@@ -6,7 +6,7 @@ description: Foundry VTT v14 module for generating grid-exact scenes from struct
 A Foundry VTT v14 module prototype for the workflow:
 
 **human brief → frontier web model → grid-exact JSON → deterministic Foundry
-Scene → edit native walls → download art package → frontier image model →
+Scene → edit native walls → download PNG guide → frontier image model →
 import artwork without moving geometry**
 
 ## What this alpha does
@@ -25,8 +25,10 @@ import artwork without moving geometry**
 * Lets you edit those walls with normal Foundry tools
 * Exports an SVG art guide from the **live Foundry wall geometry**, so manual
   corrections are preserved
-* Packages the SVG guide, full prompt, plan JSON, and instructions into one ZIP
-* Copies the complete art prompt while downloading the package
+* Converts the live SVG geometry into a PNG guide that image models can inspect
+  directly
+* Copies an image-generation prompt that explicitly forbids scripts and
+  programmatic drawing
 * Imports the finished PNG, JPEG, or WebP as the scene's visual skin without
   moving walls or lights
 
@@ -35,22 +37,20 @@ import artwork without moving geometry**
 After selecting **Build draft scene**:
 
 1. Review the generated scene and adjust its native walls or doors if needed.
-2. Select **Download art package + copy full prompt**.
-3. Upload the downloaded ZIP to ChatGPT or another frontier image model.
+2. Select **Download PNG guide + copy image prompt**.
+3. Upload the downloaded PNG directly to ChatGPT or another image model.
 4. Paste the prompt that Scene Architect copied to your clipboard.
 5. Generate and download the finished battlemap.
 6. Return to Scene Architect and select **Import finished artwork**.
 
-The ZIP contains:
+The PNG is generated from the scene's live Foundry wall geometry. Unlike an
+archive containing SVG and JSON documents, it is presented directly to the
+model as an image-generation reference. The copied prompt contains the room and
+feature descriptions and explicitly instructs the model to generate raster
+artwork rather than write code or redraw the map with vector primitives.
 
-* `art-guide.svg`, generated from the scene's live Foundry wall geometry
-* `scene-plan.json`, containing structured room, feature, and lighting data
-* `art-prompt.txt`, containing a backup copy of the complete prompt
-* `README.txt`, containing the handoff instructions
-
-If your model cannot inspect ZIP files, extract the package yourself, upload
-`art-guide.svg`, and paste the copied prompt. The individual SVG, prompt, and
-JSON exports remain available under the advanced section.
+The individual SVG, prompt, and JSON exports remain available under the
+advanced section.
 
 ## Installation
 

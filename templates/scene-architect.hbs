@@ -46,18 +46,18 @@
     {{#if sceneReady}}
       <div class="sa-status good"><i class="fa-solid fa-link"></i> Working scene: <strong>{{sceneNameLinked}}</strong></div>
       <ol class="sa-steps">
-        <li>Review the scene and adjust its native walls or doors. The package uses the live geometry.</li>
+        <li>Review the scene and adjust its native walls or doors. The image guide uses the live geometry.</li>
         <li>
-          <button type="button" data-action="downloadArtPackage" class="sa-primary"><i class="fa-solid fa-box-archive"></i> Download art package + copy full prompt</button>
+          <button type="button" data-action="downloadImageGuide" class="sa-primary"><i class="fa-solid fa-image"></i> Download PNG guide + copy image prompt</button>
         </li>
-        <li>Upload the downloaded ZIP to ChatGPT or another frontier image model, then paste the copied prompt and generate the image.</li>
+        <li>Upload the PNG directly to ChatGPT or another image model, paste the copied prompt, and ask it to generate the image.</li>
         <li>
           Download the finished PNG, JPEG or WebP, then
           <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import finished artwork</button>
         </li>
       </ol>
       <details>
-        <summary>Advanced: download package files separately</summary>
+        <summary>Advanced: download source files separately</summary>
         <div class="sa-actions sa-wrap">
           <button type="button" data-action="viewScene"><i class="fa-solid fa-eye"></i> View scene</button>
           <button type="button" data-action="exportGuide"><i class="fa-solid fa-file-export"></i> Export SVG guide</button>
