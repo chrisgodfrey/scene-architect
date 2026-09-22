@@ -325,27 +325,27 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   constructor(options={}) {
     super(options);
-    this.state={sceneName:"New Scene",columns:34,rows:28,gridSize:70,brief:"",plan:null,sceneId:null};
+    this.workflow={sceneName:"New Scene",columns:34,rows:28,gridSize:70,brief:"",plan:null,sceneId:null};
   }
 
   async _prepareContext(_options) {
-    const scene=this.state.sceneId ? game.scenes.get(this.state.sceneId) : null;
+    const scene=this.workflow.sceneId ? game.scenes.get(this.workflow.sceneId) : null;
     return {
-      sceneName:this.state.sceneName,columns:this.state.columns,rows:this.state.rows,gridSize:this.state.gridSize,brief:this.state.brief,
-      hasPlan:!!this.state.plan,
-      planSummary:this.state.plan ? `${this.state.plan.spaces.length} spaces, ${this.state.plan.openings.length} openings, ${this.state.plan.features.length} features, ${this.state.plan.lights.length} lights.` : "",
-      planJson:this.state.plan ? JSON.stringify(this.state.plan,null,2) : "",
+      sceneName:this.workflow.sceneName,columns:this.workflow.columns,rows:this.workflow.rows,gridSize:this.workflow.gridSize,brief:this.workflow.brief,
+      hasPlan:!!this.workflow.plan,
+      planSummary:this.workflow.plan ? `${this.workflow.plan.spaces.length} spaces, ${this.workflow.plan.openings.length} openings, ${this.workflow.plan.features.length} features, ${this.workflow.plan.lights.length} lights.` : "",
+      planJson:this.workflow.plan ? JSON.stringify(this.workflow.plan,null,2) : "",
       sceneReady:!!scene,
       sceneNameLinked:scene?.name || ""
     };
   }
 
-  syncForm() { Object.assign(this.state,readForm(this)); }
+  syncForm() { Object.assign(this.workflow,readForm(this)); }
 
   /** @this {SceneArchitectApp} */
   static async #copyLayoutPrompt() {
     this.syncForm();
-    await copyText(buildLayoutPrompt(this.state));
+    await copyText(buildLayoutPrompt(this.workflow));
   }
 
   /** @this {SceneArchitectApp} */
@@ -359,12 +359,12 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!fd?.json) return;
     try {
       const raw=JSON.parse(fd.json);
-      this.state.plan=validatePlan(normalizePlan(raw,this.state));
-      this.state.sceneName=this.state.plan.scene.name;
-      this.state.columns=this.state.plan.scene.columns;
-      this.state.rows=this.state.plan.scene.rows;
-      this.state.gridSize=this.state.plan.scene.gridSize;
-      this.state.brief=this.state.plan.scene.description || this.state.brief;
+      this.workflow.plan=validatePlan(normalizePlan(raw,this.workflow));
+      this.workflow.sceneName=this.workflow.plan.scene.name;
+      this.workflow.columns=this.workflow.plan.scene.columns;
+      this.workflow.rows=this.workflow.plan.scene.rows;
+      this.workflow.gridSize=this.workflow.plan.scene.gridSize;
+      this.workflow.brief=this.workflow.plan.scene.description || this.workflow.brief;
       ui.notifications.info(`${MODULE_TITLE}: plan is valid.`);
       await this.render();
     } catch(err) {
@@ -375,9 +375,9 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** @this {SceneArchitectApp} */
   static async #buildDraft() {
-    if(!this.state.plan) return;
+    if(!this.workflow.plan) return;
     try {
-      const p=this.state.plan, g=p.scene.gridSize;
+      const p=this.workflow.plan, g=p.scene.gridSize;
       const geometry=compileGeometry(p);
       const scene=await Scene.implementation.create({
         name:p.scene.name,
@@ -401,7 +401,7 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await setLevelBackground(scene,guidePath);
       await scene.setFlag(MODULE_ID,"guidePath",guidePath);
 
-      this.state.sceneId=scene.id;
+      this.workflow.sceneId=scene.id;
       await scene.view();
       ui.notifications.info(`${MODULE_TITLE}: draft scene created. Edit its native walls normally, then export the art guide.`);
       await this.render();
@@ -413,13 +413,13 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** @this {SceneArchitectApp} */
   static async #viewScene() {
-    const scene=game.scenes.get(this.state.sceneId); if(scene) await scene.view();
+    const scene=game.scenes.get(this.workflow.sceneId); if(scene) await scene.view();
   }
 
   /** @this {SceneArchitectApp} */
   static async #exportGuide() {
-    const scene=game.scenes.get(this.state.sceneId); if(!scene) return;
-    const plan=this.state.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     const svg=svgFromScene(scene,plan);
     downloadText(`${slugify(scene.name)}-art-guide.svg`,svg,"image/svg+xml;charset=utf-8");
     ui.notifications.info(`${MODULE_TITLE}: SVG guide exported from the scene's LIVE wall geometry.`);
@@ -427,22 +427,22 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** @this {SceneArchitectApp} */
   static async #copyArtPrompt() {
-    const scene=game.scenes.get(this.state.sceneId); if(!scene) return;
-    const plan=this.state.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     await copyText(buildArtPrompt(plan));
   }
 
   /** @this {SceneArchitectApp} */
   static async #downloadPlan() {
-    const scene=game.scenes.get(this.state.sceneId); if(!scene) return;
-    const plan=this.state.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     downloadText(`${slugify(scene.name)}-sceneplan.json`,JSON.stringify(plan,null,2),"application/json;charset=utf-8");
   }
 
   /** @this {SceneArchitectApp} */
   static async #importArtwork() {
-    const scene=game.scenes.get(this.state.sceneId); if(!scene) return;
-    const plan=this.state.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     const expectedW=plan.scene.columns*plan.scene.gridSize, expectedH=plan.scene.rows*plan.scene.gridSize;
     const result=await DialogV2.wait({
       window:{title:"Import finished artwork"},modal:true,
@@ -468,13 +468,20 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
-function launch() {
+async function launch() {
   if(!game.user.isGM) return ui.notifications.warn(`${MODULE_TITLE} is GM-only.`);
-  new SceneArchitectApp().render({force:true});
+  try {
+    const app=new SceneArchitectApp();
+    await app.render({force:true});
+    return app;
+  } catch(err) {
+    console.error(`${MODULE_ID} | Launch failed`,err);
+    ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+  }
 }
 
 Hooks.once("init",()=>{
-  console.log(`${MODULE_TITLE} | Initialising v0.1 alpha`);
+  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.2`);
   game.settings.register(MODULE_ID,"enabled",{name:"Enable Scene Architect",scope:"world",config:true,type:Boolean,default:true,restricted:true});
 });
 

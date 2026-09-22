@@ -2,10 +2,10 @@
   "id": "scene-architect",
   "title": "Scene Architect",
   "description": "Prompt-to-wireframe workflow for grid-exact Foundry VTT scenes. Uses an external frontier web model for layout/art generation while Foundry remains the deterministic source of truth for geometry.",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.1.0-alpha.1/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.1.0-alpha.2/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"
