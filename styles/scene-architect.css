@@ -10,6 +10,9 @@
 .scene-architect .sa-actions { display: flex; gap: 8px; margin-top: 10px; }
 .scene-architect .sa-wrap { flex-wrap: wrap; }
 .scene-architect .sa-primary { border-color: var(--color-warm-1, #ffb400); }
+.scene-architect .sa-steps { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; padding-left: 24px; }
+.scene-architect .sa-steps li { padding-left: 4px; }
+.scene-architect .sa-steps button { margin: 4px 0; width: auto; }
 .scene-architect .sa-status { padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.05); }
 .scene-architect .sa-status.good { background: rgba(60, 180, 100, .12); }
 .scene-architect .hint { opacity: .76; margin: 8px 0 0; font-size: .9em; }

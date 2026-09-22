@@ -42,19 +42,31 @@
   </section>
 
   <section class="sa-section">
-    <h2><i class="fa-solid fa-paintbrush"></i> Art pass</h2>
+    <h2><i class="fa-solid fa-paintbrush"></i> Generate and import artwork</h2>
     {{#if sceneReady}}
       <div class="sa-status good"><i class="fa-solid fa-link"></i> Working scene: <strong>{{sceneNameLinked}}</strong></div>
-      <div class="sa-actions sa-wrap">
-        <button type="button" data-action="viewScene"><i class="fa-solid fa-eye"></i> View scene</button>
-        <button type="button" data-action="exportGuide"><i class="fa-solid fa-file-export"></i> Export SVG guide</button>
-        <button type="button" data-action="copyArtPrompt"><i class="fa-regular fa-copy"></i> Copy art prompt</button>
-        <button type="button" data-action="downloadPlan"><i class="fa-solid fa-download"></i> Download plan JSON</button>
-        <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import finished artwork</button>
-      </div>
-      <p class="hint">Modify Foundry walls/doors first if you want. Export SVG reads the scene's live walls, so your manual corrections become the geometry supplied to the art model.</p>
+      <ol class="sa-steps">
+        <li>Review the scene and adjust its native walls or doors. The package uses the live geometry.</li>
+        <li>
+          <button type="button" data-action="downloadArtPackage" class="sa-primary"><i class="fa-solid fa-box-archive"></i> Download art package + copy full prompt</button>
+        </li>
+        <li>Upload the downloaded ZIP to ChatGPT or another frontier image model, then paste the copied prompt and generate the image.</li>
+        <li>
+          Download the finished PNG, JPEG or WebP, then
+          <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import finished artwork</button>
+        </li>
+      </ol>
+      <details>
+        <summary>Advanced: download package files separately</summary>
+        <div class="sa-actions sa-wrap">
+          <button type="button" data-action="viewScene"><i class="fa-solid fa-eye"></i> View scene</button>
+          <button type="button" data-action="exportGuide"><i class="fa-solid fa-file-export"></i> Export SVG guide</button>
+          <button type="button" data-action="copyArtPrompt"><i class="fa-regular fa-copy"></i> Copy art prompt</button>
+          <button type="button" data-action="downloadPlan"><i class="fa-solid fa-download"></i> Download plan JSON</button>
+        </div>
+      </details>
     {{else}}
-      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> Build a draft scene before exporting the art guide.</div>
+      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> Build a draft scene to unlock the guided art workflow.</div>
     {{/if}}
   </section>
 

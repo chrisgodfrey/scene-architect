@@ -12,8 +12,7 @@ function slugify(s) {
   return String(s || "scene").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "scene";
 }
 
-function downloadText(filename, text, type="text/plain;charset=utf-8") {
-  const blob = new Blob([text], {type});
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -24,18 +23,88 @@ function downloadText(filename, text, type="text/plain;charset=utf-8") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function copyText(text) {
+function downloadText(filename, text, type="text/plain;charset=utf-8") {
+  downloadBlob(filename,new Blob([text],{type}));
+}
+
+const CRC32_TABLE=(()=>{
+  const table=new Uint32Array(256);
+  for(let n=0;n<256;n++) {
+    let c=n;
+    for(let k=0;k<8;k++) c=(c&1)?0xedb88320^(c>>>1):c>>>1;
+    table[n]=c>>>0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let crc=0xffffffff;
+  for(const byte of bytes) crc=CRC32_TABLE[(crc^byte)&0xff]^(crc>>>8);
+  return (crc^0xffffffff)>>>0;
+}
+
+function zipHeader(size) {
+  const bytes=new Uint8Array(size);
+  return {bytes,view:new DataView(bytes.buffer)};
+}
+
+function createZipBlob(entries) {
+  const encoder=new TextEncoder();
+  const localParts=[];
+  const centralParts=[];
+  let offset=0;
+
+  for(const entry of entries) {
+    const name=encoder.encode(entry.name);
+    const data=encoder.encode(entry.content);
+    const checksum=crc32(data);
+    const local=zipHeader(30);
+    local.view.setUint32(0,0x04034b50,true);
+    local.view.setUint16(4,20,true);
+    local.view.setUint16(6,0x0800,true);
+    local.view.setUint32(14,checksum,true);
+    local.view.setUint32(18,data.length,true);
+    local.view.setUint32(22,data.length,true);
+    local.view.setUint16(26,name.length,true);
+    localParts.push(local.bytes,name,data);
+
+    const central=zipHeader(46);
+    central.view.setUint32(0,0x02014b50,true);
+    central.view.setUint16(4,20,true);
+    central.view.setUint16(6,20,true);
+    central.view.setUint16(8,0x0800,true);
+    central.view.setUint32(16,checksum,true);
+    central.view.setUint32(20,data.length,true);
+    central.view.setUint32(24,data.length,true);
+    central.view.setUint16(28,name.length,true);
+    central.view.setUint32(42,offset,true);
+    centralParts.push(central.bytes,name);
+    offset+=local.bytes.length+name.length+data.length;
+  }
+
+  const centralSize=centralParts.reduce((total,part)=>total+part.length,0);
+  const end=zipHeader(22);
+  end.view.setUint32(0,0x06054b50,true);
+  end.view.setUint16(8,entries.length,true);
+  end.view.setUint16(10,entries.length,true);
+  end.view.setUint32(12,centralSize,true);
+  end.view.setUint32(16,offset,true);
+  return new Blob([...localParts,...centralParts,end.bytes],{type:"application/zip"});
+}
+
+async function copyText(text,{notify=true}={}) {
   try {
     await navigator.clipboard.writeText(text);
-    ui.notifications.info(`${MODULE_TITLE}: copied to clipboard.`);
+    if(notify) ui.notifications.info(`${MODULE_TITLE}: copied to clipboard.`);
+    return true;
   } catch (err) {
     console.warn(`${MODULE_ID} | Clipboard failed`, err);
-    const fd = await DialogV2.input({
+    await DialogV2.input({
       window: {title: `${MODULE_TITLE}: Copy text`},
       content: `<textarea name="text" style="width:100%;height:420px">${esc(text)}</textarea>`,
       ok: {label: "Close"}
     });
-    return fd;
+    return false;
   }
 }
 
@@ -268,11 +337,42 @@ function svgFromScene(scene, plan) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n<rect width="100%" height="100%" fill="#181a1f"/>\n${roomRects}\n${features}\n${lights}\n${walls}\n</svg>`;
 }
 
-function buildArtPrompt(plan) {
+function buildArtPrompt(plan,{packageHandoff=false}={}) {
   const W=plan.scene.columns*plan.scene.gridSize, H=plan.scene.rows*plan.scene.gridSize;
   const spaces=plan.spaces.map(r=>`- ${r.name||r.id}: ${r.description||r.floor||"room"}`).join("\n");
   const features=plan.features.map(f=>`- ${f.type}: ${f.description||""} at the marked magenta rectangle`).join("\n");
-  return `Create a polished TOP-DOWN ORTHOGRAPHIC VTT battlemap by painting the attached Scene Architect SVG guide.\n\nABSOLUTE GEOMETRY CONSTRAINTS:\n- The SVG is authoritative geometry. Preserve every wall centreline and opening position EXACTLY.\n- Do not move, curve, widen, narrow, rotate, add or remove architectural walls.\n- Render physical wall artwork symmetrically around each black wall centreline, so the line runs down the middle of the graphical wall thickness.\n- Blue segments are DOORS. Purple segments are SECRET DOORS. Cyan segments are WINDOWS. Green segments are TERRAIN boundaries.\n- Do NOT render these guide colours in the finished art. They are semantic guides only.\n- Keep the exact canvas aspect ratio ${W}:${H}. The intended scene is ${plan.scene.columns}×${plan.scene.rows} squares at ${plan.scene.gridSize}px per square (${W}×${H}px).\n- NO visible grid lines in the final artwork.\n- Do not invent a floor-tile pattern that implies a competing grid. Floor texture may be irregular/subtle.\n- Keep doors/openings centred exactly on their guide segments.\n- Treat magenta rectangles as object-placement guides; paint appropriate objects within those bounds without altering walls.\n\nSCENE BRIEF:\n${plan.scene.description||""}\n\nROOMS:\n${spaces}\n\nIMPORTANT FEATURES:\n${features||"- none specified"}\n\nSTYLE:\nHigh quality richly detailed tabletop RPG battlemap; coherent top-down lighting; readable tactical silhouettes; believable materials and clutter; no perspective/isometric distortion; no labels or text in the final image.\n\nThe final image must be usable as a skin underneath the exact Foundry geometry. Geometry fidelity is more important than decorative detail.`;
+  const handoff=packageHandoff
+    ? "The attached ZIP is a Scene Architect art package. Extract it and use art-guide.svg as the visual input. The package also contains scene-plan.json for supplemental structured context."
+    : "Use the attached Scene Architect SVG guide as the visual input.";
+  return `${handoff}\n\nCreate a polished TOP-DOWN ORTHOGRAPHIC VTT battlemap by painting the Scene Architect SVG guide.\n\nABSOLUTE GEOMETRY CONSTRAINTS:\n- The SVG is authoritative geometry. Preserve every wall centreline and opening position EXACTLY.\n- Do not move, curve, widen, narrow, rotate, add or remove architectural walls.\n- Render physical wall artwork symmetrically around each black wall centreline, so the line runs down the middle of the graphical wall thickness.\n- Blue segments are DOORS. Purple segments are SECRET DOORS. Cyan segments are WINDOWS. Green segments are TERRAIN boundaries.\n- Do NOT render these guide colours in the finished art. They are semantic guides only.\n- Keep the exact canvas aspect ratio ${W}:${H}. The intended scene is ${plan.scene.columns}×${plan.scene.rows} squares at ${plan.scene.gridSize}px per square (${W}×${H}px).\n- NO visible grid lines in the final artwork.\n- Do not invent a floor-tile pattern that implies a competing grid. Floor texture may be irregular/subtle.\n- Keep doors/openings centred exactly on their guide segments.\n- Treat magenta rectangles as object-placement guides; paint appropriate objects within those bounds without altering walls.\n\nSCENE BRIEF:\n${plan.scene.description||""}\n\nROOMS:\n${spaces}\n\nIMPORTANT FEATURES:\n${features||"- none specified"}\n\nSTYLE:\nHigh quality richly detailed tabletop RPG battlemap; coherent top-down lighting; readable tactical silhouettes; believable materials and clutter; no perspective/isometric distortion; no labels or text in the final image.\n\nReturn the finished battlemap as a PNG, JPEG or WebP image with the exact ${W}×${H}px canvas. The image must be usable as a skin underneath the exact Foundry geometry. Geometry fidelity is more important than decorative detail.`;
+}
+
+function buildArtPackage(scene,plan) {
+  const base=slugify(scene.name);
+  const prompt=buildArtPrompt(plan,{packageHandoff:true});
+  const instructions=`SCENE ARCHITECT ART PACKAGE
+
+1. Upload this ZIP to a frontier model that can generate images.
+2. Paste the complete prompt copied by Scene Architect.
+3. Ask the model to extract this package and use art-guide.svg as authoritative geometry.
+4. Download the generated PNG, JPEG or WebP.
+5. Return to Foundry and select Import finished artwork.
+
+PACKAGE CONTENTS
+
+- art-guide.svg: live Foundry wall geometry and feature guides
+- scene-plan.json: structured scene, room, feature and lighting data
+- art-prompt.txt: a backup copy of the complete prompt
+
+If the model cannot inspect ZIP files, extract this archive yourself, upload art-guide.svg, and paste art-prompt.txt.
+`;
+  const blob=createZipBlob([
+    {name:"art-guide.svg",content:svgFromScene(scene,plan)},
+    {name:"scene-plan.json",content:JSON.stringify(plan,null,2)},
+    {name:"art-prompt.txt",content:prompt},
+    {name:"README.txt",content:instructions}
+  ]);
+  return {filename:`${base}-art-package.zip`,prompt,blob};
 }
 
 async function ensureDir(path) {
@@ -315,6 +415,7 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
       pastePlan:this.#pastePlan,
       buildDraft:this.#buildDraft,
       viewScene:this.#viewScene,
+      downloadArtPackage:this.#downloadArtPackage,
       exportGuide:this.#exportGuide,
       copyArtPrompt:this.#copyArtPrompt,
       downloadPlan:this.#downloadPlan,
@@ -403,7 +504,7 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
       this.workflow.sceneId=scene.id;
       await scene.view();
-      ui.notifications.info(`${MODULE_TITLE}: draft scene created. Edit its native walls normally, then export the art guide.`);
+      ui.notifications.info(`${MODULE_TITLE}: draft created. Review the walls, then download the art package.`);
       await this.render();
     } catch(err) {
       console.error(`${MODULE_ID} | Build failed`,err);
@@ -414,6 +515,24 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** @this {SceneArchitectApp} */
   static async #viewScene() {
     const scene=game.scenes.get(this.workflow.sceneId); if(scene) await scene.view();
+  }
+
+  /** @this {SceneArchitectApp} */
+  static async #downloadArtPackage() {
+    const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
+    const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
+    try {
+      const artPackage=buildArtPackage(scene,plan);
+      downloadBlob(artPackage.filename,artPackage.blob);
+      const copied=await copyText(artPackage.prompt,{notify:false});
+      const next=copied
+        ? "ZIP downloaded and full prompt copied. Upload the ZIP to your model and paste the prompt."
+        : "ZIP downloaded. Copy the prompt from the open dialog, then upload the ZIP and paste it.";
+      ui.notifications.info(`${MODULE_TITLE}: ${next}`,{permanent:true});
+    } catch(err) {
+      console.error(`${MODULE_ID} | Art package failed`,err);
+      ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
+    }
   }
 
   /** @this {SceneArchitectApp} */
@@ -481,7 +600,7 @@ async function launch() {
 }
 
 Hooks.once("init",()=>{
-  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.3`);
+  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.4`);
   game.settings.register(MODULE_ID,"enabled",{name:"Enable Scene Architect",scope:"world",config:true,type:Boolean,default:true,restricted:true});
 });
 

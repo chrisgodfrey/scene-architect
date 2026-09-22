@@ -5,23 +5,52 @@ description: Foundry VTT v14 module for generating grid-exact scenes from struct
 
 A Foundry VTT v14 module prototype for the workflow:
 
-**human brief → frontier web model → grid-exact JSON → deterministic Foundry Scene → edit native walls → export SVG art guide → frontier image model → import artwork without moving geometry**
+**human brief → frontier web model → grid-exact JSON → deterministic Foundry
+Scene → edit native walls → download art package → frontier image model →
+import artwork without moving geometry**
 
 ## What this alpha does
 
-- Adds **Scene Architect** to the Scenes directory for GMs.
-- Builds a layout request you can paste into ChatGPT or another frontier web model.
-- Validates returned JSON against grid-exact rules.
-- Deterministically compiles rectangular spaces into perimeter walls.
-- Supports open passages, normal doors, secret doors and Foundry proximity/window walls.
-- Supports extra wall/terrain/invisible/ethereal barriers.
-- Creates a real Foundry v14 Scene with an exact pixel/grid canvas.
-- Creates real native Foundry Walls and Ambient Lights.
-- Uploads an exact SVG wireframe as the temporary scene background.
-- Lets you edit those walls with normal Foundry tools.
-- Exports an SVG art guide from the **live Foundry wall geometry**, so manual corrections are preserved.
-- Generates an art prompt instructing an external image model to preserve the SVG geometry.
-- Imports the finished PNG/JPEG/WebP as the scene's visual skin without moving walls/lights.
+* Adds **Scene Architect** to the Scenes directory for GMs
+* Builds a layout request you can paste into ChatGPT or another frontier web
+  model
+* Validates returned JSON against grid-exact rules
+* Deterministically compiles rectangular spaces into perimeter walls
+* Supports open passages, normal doors, secret doors, and Foundry
+  proximity/window walls
+* Supports extra wall, terrain, invisible, and ethereal barriers
+* Creates a real Foundry v14 Scene with an exact pixel/grid canvas
+* Creates real native Foundry Walls and Ambient Lights
+* Uploads an exact SVG wireframe as the temporary scene background
+* Lets you edit those walls with normal Foundry tools
+* Exports an SVG art guide from the **live Foundry wall geometry**, so manual
+  corrections are preserved
+* Packages the SVG guide, full prompt, plan JSON, and instructions into one ZIP
+* Copies the complete art prompt while downloading the package
+* Imports the finished PNG, JPEG, or WebP as the scene's visual skin without
+  moving walls or lights
+
+## Art-generation workflow
+
+After selecting **Build draft scene**:
+
+1. Review the generated scene and adjust its native walls or doors if needed.
+2. Select **Download art package + copy full prompt**.
+3. Upload the downloaded ZIP to ChatGPT or another frontier image model.
+4. Paste the prompt that Scene Architect copied to your clipboard.
+5. Generate and download the finished battlemap.
+6. Return to Scene Architect and select **Import finished artwork**.
+
+The ZIP contains:
+
+* `art-guide.svg`, generated from the scene's live Foundry wall geometry
+* `scene-plan.json`, containing structured room, feature, and lighting data
+* `art-prompt.txt`, containing a backup copy of the complete prompt
+* `README.txt`, containing the handoff instructions
+
+If your model cannot inspect ZIP files, extract the package yourself, upload
+`art-guide.svg`, and paste the copied prompt. The individual SVG, prompt, and
+JSON exports remain available under the advanced section.
 
 ## Installation
 
