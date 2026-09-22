@@ -199,7 +199,7 @@ function wallDataFromSegment(seg, grid) {
   const D=CONST.WALL_DOOR_TYPES ?? {NONE:0,DOOR:1,SECRET:2};
   const DS=CONST.WALL_DOOR_STATES ?? {CLOSED:0,OPEN:1,LOCKED:2};
   const c=[seg.a[0]*grid,seg.a[1]*grid,seg.b[0]*grid,seg.b[1]*grid];
-  const base={c,door:D.NONE,ds:DS.CLOSED,move:M.NORMAL,light:S.NORMAL,sight:S.NORMAL,sound:S.NORMAL,threshold:{attenuation:false,light:0,sight:0,sound:0},flags:{[MODULE_ID]:{kind:seg.kind}}};
+  const base={c,door:D.NONE,ds:DS.CLOSED,move:M.NORMAL,light:S.NORMAL,sight:S.NORMAL,sound:S.NORMAL,flags:{[MODULE_ID]:{kind:seg.kind}}};
   switch(seg.kind) {
     case "door": base.door=D.DOOR; break;
     case "secret": base.door=D.SECRET; break;
@@ -481,7 +481,7 @@ async function launch() {
 }
 
 Hooks.once("init",()=>{
-  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.2`);
+  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.3`);
   game.settings.register(MODULE_ID,"enabled",{name:"Enable Scene Architect",scope:"world",config:true,type:Boolean,default:true,restricted:true});
 });
 
