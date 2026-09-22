@@ -17,14 +17,53 @@ function downloadBlob(filename, blob) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 600000);
 }
 
-function downloadText(filename, text, type="text/plain;charset=utf-8") {
+async function downloadText(filename, text, type="text/plain;charset=utf-8") {
+  const foundrySave=foundry.utils.saveDataToFile;
+  if(typeof foundrySave==="function") {
+    await foundrySave(text,type,filename);
+    return;
+  }
+  if(typeof globalThis.saveDataToFile==="function") {
+    await globalThis.saveDataToFile(text,type,filename);
+    return;
+  }
   downloadBlob(filename,new Blob([text],{type}));
+}
+
+async function requestPngSaveHandle(filename) {
+  if(typeof globalThis.showSaveFilePicker!=="function") return undefined;
+  try {
+    return await globalThis.showSaveFilePicker({
+      suggestedName:filename,
+      types:[{description:"PNG image",accept:{"image/png":[".png"]}}]
+    });
+  } catch(err) {
+    if(err?.name==="AbortError") return null;
+    throw err;
+  }
+}
+
+async function writeFile(handle,blob) {
+  const writable=await handle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+function triggerPersistentDownload(filename,url) {
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
+  a.style.display="none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 async function copyText(text,{notify=true}={}) {
@@ -485,15 +524,31 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
     const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     try {
+      const filename=`${slugify(scene.name)}-image-guide.png`;
+      const saveHandle=await requestPngSaveHandle(filename);
+      if(saveHandle===null) return;
       const width=plan.scene.columns*plan.scene.gridSize;
       const height=plan.scene.rows*plan.scene.gridSize;
       const png=await svgToPngBlob(svgFromScene(scene,plan),width,height);
-      downloadBlob(`${slugify(scene.name)}-image-guide.png`,png);
+      let fallbackPath=null;
+      if(saveHandle) await writeFile(saveHandle,png);
+      else {
+        fallbackPath=await uploadBlobToWorld(filename,png);
+        triggerPersistentDownload(filename,fallbackPath);
+      }
       const copied=await copyText(buildArtPrompt(plan),{notify:false});
       const next=copied
-        ? "PNG guide downloaded and image-generation prompt copied. Upload the PNG and paste the prompt."
-        : "PNG guide downloaded. Copy the prompt from the open dialog, then upload the PNG and paste it.";
+        ? "PNG guide saved and image-generation prompt copied. Upload the PNG and paste the prompt."
+        : "PNG guide saved. Copy the prompt from the open dialog, then upload the PNG and paste it.";
       ui.notifications.info(`${MODULE_TITLE}: ${next}`,{permanent:true});
+      if(fallbackPath) {
+        await DialogV2.wait({
+          window:{title:`${MODULE_TITLE}: PNG guide ready`},
+          content:`<p>The PNG is stored in your Foundry data. If the download did not start, use this permanent link:</p><p><a href="${esc(fallbackPath)}" download="${esc(filename)}" target="_blank" rel="noopener"><i class="fa-solid fa-download"></i> Download ${esc(filename)}</a></p>`,
+          buttons:[{action:"close",label:"Close",default:true}],
+          rejectClose:false
+        });
+      }
     } catch(err) {
       console.error(`${MODULE_ID} | Image guide failed`,err);
       ui.notifications.error(`${MODULE_TITLE}: ${err.message}`);
@@ -505,7 +560,7 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
     const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
     const svg=svgFromScene(scene,plan);
-    downloadText(`${slugify(scene.name)}-art-guide.svg`,svg,"image/svg+xml;charset=utf-8");
+    await downloadText(`${slugify(scene.name)}-art-guide.svg`,svg,"image/svg+xml;charset=utf-8");
     ui.notifications.info(`${MODULE_TITLE}: SVG guide exported from the scene's LIVE wall geometry.`);
   }
 
@@ -520,7 +575,7 @@ class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static async #downloadPlan() {
     const scene=game.scenes.get(this.workflow.sceneId); if(!scene) return;
     const plan=this.workflow.plan || scene.getFlag(MODULE_ID,"plan"); if(!plan) return;
-    downloadText(`${slugify(scene.name)}-sceneplan.json`,JSON.stringify(plan,null,2),"application/json;charset=utf-8");
+    await downloadText(`${slugify(scene.name)}-sceneplan.json`,JSON.stringify(plan,null,2),"application/json;charset=utf-8");
   }
 
   /** @this {SceneArchitectApp} */
@@ -565,7 +620,7 @@ async function launch() {
 }
 
 Hooks.once("init",()=>{
-  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.5`);
+  console.log(`${MODULE_TITLE} | Initialising v0.1.0-alpha.6`);
   game.settings.register(MODULE_ID,"enabled",{name:"Enable Scene Architect",scope:"world",config:true,type:Boolean,default:true,restricted:true});
 });
 

@@ -37,7 +37,8 @@ import artwork without moving geometry**
 After selecting **Build draft scene**:
 
 1. Review the generated scene and adjust its native walls or doors if needed.
-2. Select **Download PNG guide + copy image prompt**.
+2. Select **Download PNG guide + copy image prompt** and save the PNG when
+   prompted.
 3. Upload the downloaded PNG directly to ChatGPT or another image model.
 4. Paste the prompt that Scene Architect copied to your clipboard.
 5. Generate and download the finished battlemap.
@@ -48,6 +49,10 @@ archive containing SVG and JSON documents, it is presented directly to the
 model as an image-generation reference. The copied prompt contains the room and
 feature descriptions and explicitly instructs the model to generate raster
 artwork rather than write code or redraw the map with vector primitives.
+
+On browsers that support the File System Access API, Scene Architect opens a
+native **Save As** picker. On other browsers, it stores the PNG in the Foundry
+world data and displays a permanent download link.
 
 The individual SVG, prompt, and JSON exports remain available under the
 advanced section.
