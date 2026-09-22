@@ -42,7 +42,7 @@ A Foundry VTT v14 module prototype for the workflow:
 ### Install a release manually
 
 1. Download `scene-architect.zip` from the
-   [latest GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/latest).
+   [GitHub releases page](https://github.com/chrisgodfrey/scene-architect/releases).
 2. Extract the archive into your Foundry user data folder so the manifest is
    located at `Data/modules/scene-architect/module.json`.
 3. Restart Foundry.
