@@ -1,0 +1,64 @@
+<div class="sa-shell">
+  <section class="sa-section">
+    <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Scene brief</h2>
+    <div class="sa-grid sa-grid-4">
+      <label>Scene name
+        <input type="text" name="sceneName" value="{{sceneName}}" placeholder="Overton's Laboratory">
+      </label>
+      <label>Columns
+        <input type="number" name="columns" min="4" max="200" step="1" value="{{columns}}">
+      </label>
+      <label>Rows
+        <input type="number" name="rows" min="4" max="200" step="1" value="{{rows}}">
+      </label>
+      <label>Grid px
+        <input type="number" name="gridSize" min="50" max="400" step="1" value="{{gridSize}}">
+      </label>
+    </div>
+    <label>Describe the map
+      <textarea name="brief" rows="8" placeholder="Underground steampunk laboratory. Large central experiment chamber...">{{brief}}</textarea>
+    </label>
+    <div class="sa-actions">
+      <button type="button" data-action="copyLayoutPrompt"><i class="fa-regular fa-copy"></i> Copy layout request</button>
+      <button type="button" data-action="pastePlan"><i class="fa-solid fa-paste"></i> Paste layout JSON</button>
+    </div>
+    <p class="hint">Paste the copied request into a frontier web model. It should return a strict grid-layout JSON document. Paste that JSON back here.</p>
+  </section>
+
+  <section class="sa-section">
+    <h2><i class="fa-solid fa-ruler-combined"></i> Deterministic plan</h2>
+    {{#if hasPlan}}
+      <div class="sa-status good"><i class="fa-solid fa-circle-check"></i> {{planSummary}}</div>
+      <details>
+        <summary>Show imported JSON</summary>
+        <pre>{{planJson}}</pre>
+      </details>
+      <div class="sa-actions">
+        <button type="button" data-action="buildDraft" class="sa-primary"><i class="fa-solid fa-dungeon"></i> Build draft scene</button>
+      </div>
+    {{else}}
+      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> No layout JSON imported yet.</div>
+    {{/if}}
+  </section>
+
+  <section class="sa-section">
+    <h2><i class="fa-solid fa-paintbrush"></i> Art pass</h2>
+    {{#if sceneReady}}
+      <div class="sa-status good"><i class="fa-solid fa-link"></i> Working scene: <strong>{{sceneNameLinked}}</strong></div>
+      <div class="sa-actions sa-wrap">
+        <button type="button" data-action="viewScene"><i class="fa-solid fa-eye"></i> View scene</button>
+        <button type="button" data-action="exportGuide"><i class="fa-solid fa-file-export"></i> Export SVG guide</button>
+        <button type="button" data-action="copyArtPrompt"><i class="fa-regular fa-copy"></i> Copy art prompt</button>
+        <button type="button" data-action="downloadPlan"><i class="fa-solid fa-download"></i> Download plan JSON</button>
+        <button type="button" data-action="importArtwork" class="sa-primary"><i class="fa-solid fa-image"></i> Import finished artwork</button>
+      </div>
+      <p class="hint">Modify Foundry walls/doors first if you want. Export SVG reads the scene's live walls, so your manual corrections become the geometry supplied to the art model.</p>
+    {{else}}
+      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> Build a draft scene before exporting the art guide.</div>
+    {{/if}}
+  </section>
+
+  <section class="sa-section sa-footer-note">
+    <strong>Geometry is authoritative.</strong> The final artwork is only a skin. Scene Architect keeps the grid, walls, doors, windows and lights as Foundry documents.
+  </section>
+</div>
