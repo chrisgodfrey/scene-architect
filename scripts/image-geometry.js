@@ -156,7 +156,7 @@ export function validateImageGeometry(input,request) {
     return result;
   };
   let walls=raw.walls.map(s=>clean(s,false)),openings=raw.openings.map(s=>clean(s,true));
-  let removedSourceIds=[];
+  let removedSourceIds=[],registrationReviewRequired=Boolean(raw.registrationReviewRequired),registrationReviewNote=registered&&typeof raw.registrationReviewNote==='string'?text(raw.registrationReviewNote,'Registration review note'):'';
   if(registered) {
     if(!Array.isArray(raw.removedSourceIds)||!raw.removedSourceIds.every(id=>typeof id==='string'))throw new Error('removedSourceIds must be an array of registered prior IDs.');
     removedSourceIds=[...new Set(raw.removedSourceIds)];
@@ -164,7 +164,10 @@ export function validateImageGeometry(input,request) {
     if(removedSourceIds.some(id=>representedSources.has(id)))throw new Error('A registered source ID cannot be both represented and removed.');
     const accounted=new Set([...representedSources,...removedSourceIds]);
     const missing=[...knownSources].filter(id=>!accounted.has(id));
-    if(missing.length)throw new Error(`Account for every registered source ID. Missing: ${missing.slice(0,10).join(', ')}${missing.length>10?'…':''}.`);
+    if(missing.length) {
+      removedSourceIds.push(...missing);registrationReviewRequired=true;
+      registrationReviewNote=`The model did not account for ${missing.length} registered source ${missing.length===1?'ID':'IDs'} (${missing.slice(0,5).join(', ')}${missing.length>5?', …':''}). They are treated as removed for this preview; compare Current and Proposed geometry before applying.`;
+    }
   }
   if(sourceInput) {
     const sceneWidth=request.sceneWidth,sceneHeight=request.sceneHeight,alignment=request.alignment;
@@ -204,7 +207,10 @@ export function validateImageGeometry(input,request) {
   for(const s of all)if(Math.round(s.a[0]*sceneWidth)===Math.round(s.b[0]*sceneWidth)&&Math.round(s.a[1]*sceneHeight)===Math.round(s.b[1]*sceneHeight))throw new Error(`${s.id}: segment has zero fitted pixel length.`);
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++)if(overlap(all[i],all[j]))throw new Error(`${all[i].id} overlaps ${all[j].id}. Split walls at doors and passages; remove duplicate spans.`);
   const result={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:sceneWidth,height:sceneHeight},walls,openings,reviewNotes:raw.reviewNotes.map(v=>text(v,'Review note'))};
-  if(registered)result.removedSourceIds=removedSourceIds;
+  if(registered) {
+    result.removedSourceIds=removedSourceIds;
+    if(registrationReviewRequired) {result.registrationReviewRequired=true;result.registrationReviewNote=registrationReviewNote;}
+  }
   if(sourceInput||canonicalSource)result.origin={version:2,coordinateSpace:'normalized-source-image',source:{imageId:request.imageId,width:request.width,height:request.height}};
   return result;
 }

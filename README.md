@@ -23,10 +23,10 @@ any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.6** adds plan-guided geometry registration. ChatGPT now receives
-stable current-wall, room, feature and passage context when comparing the
-finished map, while the fitted-image fallback includes a labelled translucent
-comparison overlay. Returned geometry must account for every registered vector.
+**0.2.0-alpha.7** makes plan-guided geometry import resilient to incomplete model
+bookkeeping. ChatGPT still receives stable wall, room, feature and passage context,
+but an omitted source ID now creates a mandatory review warning instead of blocking
+an otherwise valid complete geometry network.
 
 ### Install or update in Foundry
 
@@ -39,9 +39,9 @@ comparison overlay. Returned geometry must account for every registered vector.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.6**.
+   **0.2.0-alpha.7**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.6)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.7)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -60,7 +60,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.6` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.7` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -140,7 +140,9 @@ every retry. To start over instead, use **Copy fresh layout request instead**.
 4. Ask ChatGPT to return the complete geometry JSON. Every returned segment
    identifies the source vectors it preserved, moved, changed, split or merged;
    added segments use no source ID, and removed vectors are listed explicitly.
-   Scene Architect rejects unknown, conflicting or unaccounted source IDs. Paste
+   Scene Architect rejects unknown or conflicting source IDs. If ChatGPT omits
+   source bookkeeping, Scene Architect imports the complete network with a
+   mandatory review warning instead of making you regenerate it. Paste
    the result into **Geometry JSON**, or
    choose a JSON file, then **Import geometry for review**. A selected file takes
    priority over pasted text. This saves the proposal and previews it; no walls change.
@@ -183,8 +185,9 @@ import it again so its new path invalidates old analysis.
 Validation checks schema, image identity, finite in-range coordinates, unique IDs,
 nonzero lengths and overlapping spans, including solid walls covering doors or
 passages. Registered requests also require every current wall and planned open
-passage to be represented or explicitly removed. Unknown document fields are
-discarded. Limits: 1 MB of JSON and 2000 segments. These checks do not prove visual
+passage to be represented or explicitly removed; omissions are treated as proposed
+removals and require explicit review. Unknown document fields are discarded.
+Limits: 1 MB of JSON and 2000 segments. These checks do not prove visual
 accuracy, connected rooms or leak-free vision. Secret doors and plan-informed
 geometry are always marked for review.
 
@@ -325,7 +328,7 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for the current source: **49 unit tests and 73 browser assertions**
+Local verification for the current source: **50 unit tests and 73 browser assertions**
 passed. Coverage includes plan-validation correction and retry, full-map import,
 exact output dimensions, live edited
 wall overlays, omission of overlays from the uploaded background, offsets,

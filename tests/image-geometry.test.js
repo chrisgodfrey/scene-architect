@@ -49,11 +49,18 @@ test('registered geometry preserves complete split, merge and removal correspond
   assert.deepEqual(result.removedSourceIds,['opening-1']);
   assert.deepEqual(validateImageGeometry(result,registeredRequest),result);
 });
-test('registered geometry rejects missing, unknown, duplicated and reused removals',()=>{
+test('missing registered IDs import with a mandatory source-accounting review warning',()=>{
+  const registeredRequest={...request,registration};
+  const p={...proposal(),walls:[{...segment('only',[.1,.2],[.4,.2]),sourceIds:['wall-a'],change:'moved'}],openings:[],removedSourceIds:['wall-b']};
+  const result=validateImageGeometry(p,registeredRequest);
+  assert(result.registrationReviewRequired);assert.match(result.registrationReviewNote,/opening-1/);
+  assert.deepEqual(result.removedSourceIds,['wall-b','opening-1']);
+  assert.deepEqual(validateImageGeometry(result,registeredRequest),result);
+});
+test('registered geometry rejects unknown, duplicated and reused removals',()=>{
   const registeredRequest={...request,registration};
   const valid={...proposal(),walls:[{...segment('only',[.1,.2],[.4,.2]),sourceIds:['wall-a'],change:'moved'}],openings:[],removedSourceIds:['wall-b','opening-1']};
   for(const modify of [
-    p=>p.removedSourceIds.pop(),
     p=>p.walls[0].sourceIds=['unknown'],
     p=>p.removedSourceIds=['wall-b','wall-b','opening-1'],
     p=>p.removedSourceIds=['wall-a','wall-b','opening-1'],

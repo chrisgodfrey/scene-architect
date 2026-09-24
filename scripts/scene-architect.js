@@ -181,8 +181,9 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       warnings:p?planWarnings(p):[],planJson:p?JSON.stringify(p,null,2):'',
       planSummary:p?`${p.spaces.length} rooms · ${p.features.length} illustrated features · one complete map`:'',
       analysisReady:!!map?.src,geometryJson:proposal?JSON.stringify(proposal,null,2):'',hasProposal:!!proposal,analysisWarning,
-      geometrySummary:proposal?`${proposal.walls.length} wall/door segments · ${proposal.openings.length} open passages · ${review.length} review markers`:'',
+      geometrySummary:proposal?`${proposal.walls.length} wall/door segments · ${proposal.openings.length} open passages · ${review.length} review markers${proposal.registrationReviewRequired?' · source accounting needs review':''}`:'',
       geometryReview:review.map(s=>`${s.id}: ${s.note||'Check this segment against the artwork.'}`),geometryNotes:proposal?.reviewNotes??[],
+      registrationReviewNote:proposal?.registrationReviewNote,
       hasGeometryBackup:!!scene?.getFlag(MODULE_ID,'geometryBackup'),
       mapSource:map?.src,scale:(map?.scale??1)*100,offsetX:map?.x??0,offsetY:map?.y??0};
   }
@@ -394,8 +395,8 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     if(this.element.querySelector('[name="geometryFile"]').files.length||this.element.querySelector('[name="geometryJson"]').value.trim()!==JSON.stringify(proposal,null,2))throw new Error('Import your edited geometry JSON before applying.');
     if(!preview||preview.frame!==frame||preview.signature!==wallSignature(this.scene)||preview.json!==JSON.stringify(proposal))throw new Error('Preview the proposed geometry again before applying; the scene or proposal may have changed.');
     const review=[...proposal.walls,...proposal.openings].filter(s=>s.reviewRequired);
-    if(review.length&&!this.element.querySelector('[name="geometryReviewed"]').checked)throw new Error('Review the orange markers, then check the review acknowledgement before applying.');
-    if(!await DialogV2.confirm({window:{title:'Replace scene walls and doors?'},content:`<p>Replace ALL ${this.scene.walls.size??this.scene.walls.length} current walls and doors, including manual edits, with ${proposal.walls.length} proposed segments? Open passages create no blocking walls.</p><p>The previous walls will be saved under Restore previous walls. Background, lights, Tiles and tokens stay unchanged. Imported doors start closed. ${review.length} marked segments still need your judgement.</p>`,rejectClose:false}))return;
+    if((review.length||proposal.registrationReviewRequired)&&!this.element.querySelector('[name="geometryReviewed"]').checked)throw new Error('Review the orange markers and source-accounting warnings, then check the review acknowledgement before applying.');
+    if(!await DialogV2.confirm({window:{title:'Replace scene walls and doors?'},content:`<p>Replace ALL ${this.scene.walls.size??this.scene.walls.length} current walls and doors, including manual edits, with ${proposal.walls.length} proposed segments? Open passages create no blocking walls.</p><p>The previous walls will be saved under Restore previous walls. Background, lights, Tiles and tokens stay unchanged. Imported doors start closed. ${review.length} marked segments${proposal.registrationReviewRequired?' and the source-accounting warning':''} still need your judgement.</p>`,rejectClose:false}))return;
     await replaceSceneWalls(this.scene,proposedWallData(proposal,this.scene),preview.signature,frame);
     this.geometryPreview=null;await this.render();
     ui.notifications.info('Proposed geometry applied. Test doors, movement and vision. Restore previous walls is available.');

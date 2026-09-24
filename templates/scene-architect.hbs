@@ -127,11 +127,12 @@
       <button type="button" data-action="importGeometry">Import geometry for review</button>
       {{#if hasProposal}}
       <p class="sa-status good">Complete: {{geometrySummary}}.</p>
+      {{#if registrationReviewNote}}<p class="sa-status warning">{{registrationReviewNote}}</p>{{/if}}
       {{#each geometryNotes}}<p class="sa-status warning">{{this}}</p>{{/each}}
       {{#each geometryReview}}<p class="sa-status warning">{{this}}</p>{{/each}}
       <label>Geometry overlay<select name="geometryOverlay"><option value="proposed">Proposed geometry</option><option value="current">Current geometry</option><option value="both">Both</option><option value="none">Artwork only</option></select></label>
       <p class="hint">Proposed walls: mint · Doors: pink · Review markers: dashed orange. Current walls: yellow. Open passages are dashed guides only.</p>
-      <label class="sa-check"><input type="checkbox" name="geometryReviewed"> I reviewed the marked segments and accept them as a starting point.</label>
+      <label class="sa-check"><input type="checkbox" name="geometryReviewed"> I reviewed the marked segments and source-accounting warnings and accept them as a starting point.</label>
       <div class="sa-actions"><button class="{{#if next.previewGeometry}}sa-primary{{/if}}" type="button" data-action="previewGeometry">Preview geometry</button><button type="button" data-action="applyGeometry">Apply proposed geometry</button></div>
       <div class="sa-geometry-preview"></div>
       <p class="hint">Applying saves the previous walls for restoration. Geometry is estimated and may still need correction.</p>
