@@ -72,7 +72,7 @@ try {
   assert(layoutPrompt.includes('"preset":"flickering-lamp"')&&layoutPrompt.includes('sourceFeatureId')&&layoutPrompt.includes('flicker, rainbowswirl'),'Layout prompt requests semantic source-linked lights using installed animation keys');
   const p=structuredClone(fixture);p.art.assignments={};
   const plannedApp=new SceneArchitectApp();plannedApp.usePlan(structuredClone(fixture));await plannedApp.render();
-  assert(plannedApp.element.querySelectorAll('.sa-primary').length===1&&plannedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft','Planned workflow identifies draft creation as its one primary action');
+  assert(plannedApp.element.querySelectorAll('.sa-primary').length===1&&plannedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft'&&plannedApp.element.querySelectorAll('[aria-current="step"]').length===1&&plannedApp.element.querySelector('[aria-current="step"]').dataset.step==='1'&&plannedApp.element.querySelector('.sa-step[data-step="1"] details').open,'Planned workflow identifies draft creation as its one primary action and opens only the current planning step');
   const invalidPlan=structuredClone(fixture),firstProp=invalidPlan.features[0],overlappingProp=invalidPlan.features[1];
   overlappingProp.x=firstProp.x;overlappingProp.y=firstProp.y;
   const rejectedJson=JSON.stringify(invalidPlan,null,2),dialogResults=[{json:rejectedJson}];
@@ -99,7 +99,7 @@ try {
   scenes.set(scene.id,scene);
   const app=new SceneArchitectApp();app.workflow=projectFromScene(scene);await app.render();
   assert(document.querySelectorAll('[name="mapFile"]').length===1&&!document.querySelector('[data-asset-id]'),'Wizard requests one complete map with no asset slots');
-  assert(document.querySelectorAll('.sa-primary').length===1&&document.querySelector('.sa-primary').dataset.action==='exportGuide','Wizard exposes exactly one primary next action');
+  assert(document.querySelectorAll('.sa-primary').length===1&&document.querySelector('.sa-primary').dataset.action==='exportGuide'&&document.querySelectorAll('[aria-current="step"]').length===1&&document.querySelector('.sa-progress-item[data-step="1"]').classList.contains('is-complete')&&document.querySelector('[aria-current="step"]').dataset.step==='2','Wizard exposes exactly one primary next action with planning complete and generation current');
   const reference=await app.markReferenceExported();await app.render();
   assert(reference.referenceExportedAt&&!reference.imageId&&document.querySelector('.sa-primary').dataset.action==='copyMapPrompt','Exporting the reference advances the wizard without creating a same-chat generation identity');
   const guide=renderGuide(p,scene);
@@ -121,7 +121,7 @@ try {
   let confirmText='';foundry.applications.api.DialogV2.confirm=async options=>{confirmText=options.content;return true;};
   await app.applyMap();
   assert(uploads.length===2&&scene.firstLevel.background.src.endsWith('-map.png'),'Apply uploads the original source and fitted full-map background');
-  assert(scene.getFlag('scene-architect','map').generationId===null&&app.element.querySelector('.sa-primary').dataset.action==='exportAnalysisImage','A map applied without a copied generation prompt uses the fitted-image geometry fallback');
+  assert(scene.getFlag('scene-architect','map').generationId===null&&app.element.querySelector('.sa-primary').dataset.action==='exportAnalysisImage'&&app.element.querySelectorAll('[aria-current="step"]').length===1&&app.element.querySelector('.sa-progress-item[data-step="2"]').classList.contains('is-complete')&&app.element.querySelector('.sa-progress-item[data-step="3"]').classList.contains('is-complete')&&app.element.querySelector('[aria-current="step"]').dataset.step==='4'&&app.element.querySelector('.sa-step[data-step="4"] details').open,'A map applied without a copied generation prompt completes generation and alignment, then opens fitted-image geometry');
   assert(JSON.stringify([scene.walls,scene.lights,scene.tiles])===documents,'Applying preserves manually edited walls, lights and all existing Tiles');
   assert(confirmText.includes('older Scene Architect prop Tiles')&&confirmText.includes('aspect ratio'),'Confirmation explains legacy Tiles and aspect-ratio stretch');
   await app.markReferenceExported();await app.copyMapPrompt();
@@ -211,7 +211,7 @@ try {
   assert(JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background])===preserved,'Geometry replacement preserves lights, the image and existing Tiles');
   const geometryApp=new SceneArchitectApp();geometryApp.workflow=projectFromScene(scene);await geometryApp.render();
   assert(geometryApp.element.textContent.includes('Restore previous walls')&&geometryApp.element.querySelector('[name="geometryJson"]').value.includes('wall1'),'Reopening restores the geometry proposal and wall-backup action');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt','Applied geometry advances the one primary action to same-chat lighting while keeping geometry review available');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt'&&geometryApp.element.querySelectorAll('[aria-current="step"]').length===1&&geometryApp.element.querySelector('.sa-progress-item[data-step="4"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='5'&&geometryApp.element.querySelector('.sa-step[data-step="5"] details').open,'Applied geometry marks its step complete and opens same-chat lighting as the one primary action');
   await geometryApp.restoreGeometry();
   const stripId=wall=>{const c=structuredClone(wall);delete c.id;delete c._id;if(c.flags?.['scene-architect'])delete c.flags['scene-architect'].geometryBatch;return c;};
   assert(same(scene.walls.map(stripId),beforeReplacement.map(stripId)),'Restore action restores the previous wall coordinates, types and document settings');
@@ -265,7 +265,7 @@ try {
   geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(finalLighting);await geometryApp.importLighting();await geometryApp.applyLighting();
   assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2&&same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore),'Applying lighting replaces only Scene Architect-managed lights and preserves the protected document');
   assert(JSON.stringify(scene.walls)===wallsBeforeLights&&scene.getFlag('scene-architect','lightingBackup').lights.length===2,'Applying lighting preserves walls and saves a durable managed-light backup');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene','Applied lighting advances the one primary action to live Foundry testing');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene'&&geometryApp.element.querySelectorAll('[aria-current="step"]').length===1&&geometryApp.element.querySelector('.sa-progress-item[data-step="5"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='6'&&geometryApp.element.querySelector('.sa-step[data-step="6"] details').open,'Applied lighting marks its step complete and opens live Foundry testing as the one primary action');
   const appliedManaged=structuredClone(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated));
   await geometryApp.restoreLighting();
   assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).some(light=>light.flags['scene-architect'].sourceId==='plan-light-1-portal')&&scene.getFlag('scene-architect','lightingBackup').lights.length===appliedManaged.length,'Restore returns the previous managed-light set and keeps one-level undo');
@@ -296,17 +296,17 @@ try {
   assert(fresh.scene.lights.length===4&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates semantic and legacy native lights plus a geometry guide (mock Foundry)');
   assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
   assert(fresh.scene.lights[1].config.animation.type==='flicker'&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Flickering, steady and legacy non-animated lights produce complete native animation configs');
-  assert(!!fresh.scene.getFlag('scene-architect','revision'),'New draft is linked and persisted for reopening');
   await geometryApp.render();
   await geometryApp.copySourceLightingPrompt();
   const screenshotRequest=scene.getFlag('scene-architect','lightingRequest');
   geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify({...lightProposal,requestId:screenshotRequest.requestId});
   await geometryApp.importLighting();
+  assert(!!fresh.scene.getFlag('scene-architect','revision')&&geometryApp.element.querySelector('.sa-step[data-step="5"] details').open,'New drafts persist for reopening and the lighting review remains expanded for visual inspection');
   document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
   document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
   document.querySelector('#assembly').style.display='none';
-  const lightingSection=document.querySelector('[name="lightingJson"]').closest('.sa-section');
-  for(const section of document.querySelectorAll('.sa-section'))if(section!==lightingSection)section.style.display='none';
+  const lightingSection=document.querySelector('[name="lightingJson"]').closest('.sa-section'),hero=document.querySelector('.sa-hero');
+  for(const section of document.querySelectorAll('.sa-section'))if(section!==hero&&section!==lightingSection)section.style.display='none';
   window.scrollTo(0,0);
   await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({passed:results.length,results},null,2)});
   document.title='PASS — Scene Architect';

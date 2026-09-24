@@ -203,8 +203,28 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     const lightingNext=lightRepair?(lightRepair.promptCopiedAt?'importLighting':'copyLightRepairPrompt'):lightProposal?'previewLighting':lightingRequest?.promptCopiedAt&&!lightingWarning?'importLighting':hasLightingBackup?'viewScene':sameChatReady?'copySourceLightingPrompt':'exportLightingImage';
     const geometryNext=geometryRepair?(geometryRepair.promptCopiedAt?'importGeometry':'copyGeometryRepairPrompt'):!proposal?(sameChatReady?'copySourceAnalysisPrompt':'exportAnalysisImage'):'previewGeometry';
     const next=repair?(repair.promptCopiedAt?'pastePlan':'copyPlanRepairPrompt'):!p?'copyLayoutPrompt':!scene?'buildDraft':!map?.src?(!referenceReady?'exportGuide':!this.workflow.generation.promptCopiedAt?'copyMapPrompt':'previewMap'):geometryRepair?geometryNext:lightingStarted?lightingNext:geometryNext;
+    const actionSteps={
+      copyLayoutPrompt:1,copyPlanRepairPrompt:1,pastePlan:1,buildDraft:1,
+      exportGuide:2,copyMapPrompt:2,previewMap:3,applyMap:3,
+      copySourceAnalysisPrompt:4,exportAnalysisImage:4,copyGeometryRepairPrompt:4,importGeometry:4,previewGeometry:4,applyGeometry:4,
+      copySourceLightingPrompt:5,exportLightingImage:5,copyLightRepairPrompt:5,importLighting:5,previewLighting:5,applyLighting:5,
+      viewScene:6
+    };
+    const activeStep=actionSteps[next]??1,completed={1:!!scene,2:!!(map?.src||this.workflow.generation?.promptCopiedAt),3:!!map?.src,4:!!scene?.getFlag(MODULE_ID,'geometryBackup'),5:hasLightingBackup};
+    const step=(number,short)=>{
+      let state='locked',label='Later';
+      if(number===activeStep) {state='current';label='Current';}
+      else if(completed[number]) {state='complete';label='Complete';}
+      else if((number===4||number===5)&&map?.src) {state='optional';label='Optional';}
+      else if(number===6&&map?.src) {state='ready';label='Ready';}
+      else if(number===activeStep+1) {state='upcoming';label='Next';}
+      return {number,short,state,className:`is-${state}`,label,complete:state==='complete',current:state==='current'};
+    };
+    const steps=[step(1,'Plan'),step(2,'Generate'),step(3,'Align'),step(4,'Geometry'),step(5,'Lights'),step(6,'Test')];
     const lightData=lightProposal?proposedLightData(lightProposal,scene,lightAnimationCatalog()):[];
-    return {...this.workflow,hasPlan:!!p,planStepOpen:!p||!!repair,sceneReady:!!scene,sceneNameLinked:scene?.name,referenceReady,sameChatReady,next:{[next]:true},
+    return {...this.workflow,hasPlan:!!p,sceneReady:!!scene,sceneNameLinked:scene?.name,referenceReady,sameChatReady,next:{[next]:true},
+      steps,step1:steps[0],step2:steps[1],step3:steps[2],step4:steps[3],step5:steps[4],step6:steps[5],
+      step1Open:steps[0].current||!!repair,step2Open:steps[1].current,step3Open:steps[2].current,step4Open:steps[3].current,step5Open:steps[4].current,step6Open:steps[5].current,
       projects:[...game.scenes].filter(s=>s.getFlag(MODULE_ID,'plan')).map(s=>({id:s.id,name:s.name,selected:s.id===scene?.id})),
       editedGeometry:scene&&p?geometryConflict(scene,p):null,
       legacyTiles:scene?[...scene.tiles].filter(t=>t.flags?.[MODULE_ID]?.generated).length:0,

@@ -23,15 +23,14 @@ image detector. Review both results and make any remaining corrections in Foundr
 
 ## Current build and installation
 
-**0.2.0-alpha.9** adds an independently reviewable finished-map lighting pass.
-It registers Scene Architect-managed and protected native lights, asks ChatGPT to
-fit tangible emitters to the artwork, resolves semantic effects and bounded spread
-into complete Foundry settings, and replaces only managed lights. The workflow
-includes correction, labelled visual and textual review, stale-context protection,
-rollback, backup and restore.
+**0.2.0-alpha.10** tightens the wizard around a compact six-stage progress
+tracker. Completed stages show a green tick and a visible Complete label, the
+current stage is emphasized and expanded, and finished stages collapse to keep
+the active instructions in view. Text labels and icons communicate every state
+without relying on colour alone.
 
-The release also retains the guided correction loop for rejected final geometry
-introduced in alpha.8.
+The release retains the independently reviewable finished-map lighting pass from
+alpha.9 and the guided correction loop for rejected final geometry from alpha.8.
 
 ### Install or update in Foundry
 
@@ -44,9 +43,9 @@ introduced in alpha.8.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.9**.
+   **0.2.0-alpha.10**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.9)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.10)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -65,7 +64,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.9` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.10` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
