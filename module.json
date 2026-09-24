@@ -1,11 +1,11 @@
 {
   "id": "scene-architect",
   "title": "Scene Architect",
-  "description": "Scene-specific art kits, exact rectangular geometry and editable prop Tiles for Foundry VTT v14.",
-  "version": "0.2.0-alpha.2",
+  "description": "Complete illustrated maps with layout references and editable walls, doors and lights for Foundry VTT v14.",
+  "version": "0.2.0-alpha.3",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.2/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.3/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"

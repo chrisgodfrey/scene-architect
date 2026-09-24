@@ -1,0 +1,17 @@
+Use case: stylized-concept. Asset type: production transparent prop atlas for a top-down Foundry VTT laboratory map.
+Generate ONE square PNG image, ideally 1536 x 1536, with a GENUINELY TRANSPARENT background and real alpha. Exactly 3 equal columns and 3 equal rows define nine invisible square cells. Software will cut the image into equal thirds; do not draw cell lines or labels. Keep each entire subject, including every protrusion, within the central 76% of its OWN cell; at least 12% transparent padding on all four sides of each cell. Centre subjects within their cell. No object may cross a cell boundary. The last two cells must be fully transparent and empty.
+Use these EXACT cell assignments, reading left to right:
+TOP ROW:
+1. One copper restraint bed with dark leather straps and buckles, head pointing to the TOP of the image. Bed width to length 1:2. No person.
+2. One Instantiator teleportation apparatus: overhead copper ring around an empty circular platform, electrical coils integrated into the ring, purple-green accents. Overall footprint width:height 4:3. No detached parts or surrounding vapour.
+3. One square brass steam generator with flywheel, boiler and pressure gauges, tightly integrated into one machine.
+MIDDLE ROW:
+4. One emergency medical bed, cream linen and copper frame, head pointing to the TOP. Bed width to length 1:2. No person.
+5. One broken clockwork construct: a SINGLE compact pile of brass torso and metal limbs. Square footprint. All pieces clustered together.
+6. One isolated flight of stone stairs ascending toward the TOP, no surrounding room or well. Footprint width:height 2:3.
+BOTTOM ROW:
+7. One delicate, translucent purple-and-green vapour wisp, approximately width:height 5:4. Real varying alpha, entirely isolated, no ground or object.
+8. Empty transparent cell.
+9. Empty transparent cell.
+Cohesive richly detailed painterly fantasy steampunk battlemap art, charcoal stone, aged copper and dark iron, restrained purple/green accents. All objects viewed strictly orthographically from DIRECTLY ABOVE, never isometric or angled perspective. Mild consistent upper-left lighting on objects; NO cast shadows, ground plane, room background, surrounding scenery, text, watermarks or grid.
+The canvas and gutters MUST be genuinely transparent, not white, black, grey or a painted checkerboard. Return only this one prop atlas. Do not generate separate image files or a scene.

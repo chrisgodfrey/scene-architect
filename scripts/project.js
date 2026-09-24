@@ -34,7 +34,7 @@ export function projectFromScene(scene) {
   const raw=scene.getFlag(MODULE_ID,'plan');
   if(!raw) throw new Error('This scene has no Scene Architect plan.');
   const plan=validateArt(migrateArt(validatePlan(normalizePlan(raw))));
-  return {plan,sceneId:scene.id,sceneName:plan.scene.name,columns:plan.scene.columns,rows:plan.scene.rows,gridSize:plan.scene.gridSize,brief:plan.scene.description,revision:scene.getFlag(MODULE_ID,'revision')??null};
+  return {plan,sceneId:scene.id,sceneName:plan.scene.name,columns:plan.scene.columns,rows:plan.scene.rows,gridSize:plan.scene.gridSize,brief:plan.scene.description,map:structuredClone(scene.getFlag(MODULE_ID,'map')??null),revision:scene.getFlag(MODULE_ID,'revision')??null};
 }
 
 export async function saveProject(scene,workflow) {
@@ -46,7 +46,7 @@ export async function saveProject(scene,workflow) {
   // while preserving other module flags and unrelated scene data.
   const saved=scene.getFlag(MODULE_ID,'plan')?.art?.assignments??{};
   for(const id of Object.keys(saved))if(!Object.hasOwn(data.art.assignments,id))data.art.assignments[`-=${id}`]=null;
-  await scene.update({[`flags.${MODULE_ID}.plan`]:data,[`flags.${MODULE_ID}.revision`]:revision});
+  await scene.update({[`flags.${MODULE_ID}.plan`]:data,[`flags.${MODULE_ID}.map`]:structuredClone(workflow.map??null),[`flags.${MODULE_ID}.revision`]:revision});
   workflow.revision=revision;
 }
 

@@ -1,14 +1,16 @@
 <div class="sa-shell">
   <section class="sa-section">
     <h2>Scene Architect</h2>
+    <p>Create one illustrated map, then refine its editable Foundry walls and doors.</p>
     <div class="sa-actions sa-wrap">
       <select name="projectId" aria-label="Saved Scene Architect scene"><option value="">Choose saved scene…</option>{{#each projects}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</select>
       <button type="button" data-action="reopen">Reopen</button>
       <button type="button" data-action="newProject">New project</button>
       <button type="button" data-action="loadExample">Load laboratory example</button>
     </div>
-    {{#if sceneReady}}<p class="sa-status good">Working scene: <strong>{{sceneNameLinked}}</strong>. Assignments save to this scene.</p>{{/if}}
-    {{#if conflict}}<div class="sa-status warning"><strong>Geometry conflict:</strong> {{conflict}}<p>The saved plan controls floors and placement. Rendering and guide export are blocked. Undo native edits to match the plan, or download/edit the JSON and build a new scene. Existing native walls are never replaced.</p></div>{{/if}}
+    {{#if sceneReady}}<p class="sa-status good">Working scene: <strong>{{sceneNameLinked}}</strong></p>{{/if}}
+    {{#if editedGeometry}}<p class="sa-status warning">Native geometry or scene settings differ from the original plan. Manual wall and door edits are supported and preserved. The overlay uses your current walls; reference room labels and feature positions still come from the saved plan.</p>{{/if}}
+    {{#if legacyTiles}}<p class="sa-status warning">This scene has {{legacyTiles}} older generated prop Tiles. They stay above any imported map. Build a new scene from the plan for a clean start, or remove unwanted Tiles in Foundry.</p>{{/if}}
   </section>
   <section class="sa-section">
     <details {{#unless hasPlan}}open{{/unless}}>
@@ -20,7 +22,7 @@
         <label>Grid px<input type="number" name="gridSize" min="50" max="400" value="{{gridSize}}"></label>
       </div>
       <label>Describe the map<textarea name="brief" rows="5">{{brief}}</textarea></label>
-      <p class="hint">These fields create the layout request. Import the returned JSON to define geometry.</p>
+      <p class="hint">Copy the layout request to ChatGPT, then import the returned JSON. Or load the laboratory example above.</p>
       <div class="sa-actions"><button type="button" data-action="copyLayoutPrompt">Copy layout request</button><button type="button" data-action="pastePlan">Import / edit plan JSON</button></div>
     </details>
     {{#if hasPlan}}
@@ -28,53 +30,40 @@
       {{#each warnings}}<p class="sa-status warning">{{this}}</p>{{/each}}
       <div class="sa-actions sa-wrap">
         <button type="button" data-action="buildDraft">{{#if sceneReady}}Build a new scene from plan{{else}}Build draft scene{{/if}}</button>
-        <button type="button" data-action="downloadPlan">Download complete plan + art manifest</button>
-        {{#if sceneReady}}<button type="button" data-action="viewScene">View scene</button><button type="button" data-action="exportGuide">Export SVG guide</button>{{/if}}
+        <button type="button" data-action="downloadPlan">Download original plan JSON</button>
+        {{#if sceneReady}}<button type="button" data-action="viewScene">View scene</button>{{/if}}
       </div>
-      <details><summary>Inspect saved geometry and art data</summary><pre>{{planJson}}</pre></details>
+      <details><summary>Inspect original plan</summary><p class="hint">Native edits are saved by Foundry, not written back into this JSON.</p><pre>{{planJson}}</pre></details>
     {{/if}}
   </section>
-  {{#if hasPlan}}
+  {{#if sceneReady}}
   <section class="sa-section">
-    <h2>2. Request your scene’s art kit</h2>
-    <p>{{art.direction}}</p>
-    <p class="hint">Copy the request into ChatGPT. Generate and download separate images, then match each file to its named slot below. Several images may require several downloads. Repeated props share one image.</p>
-    <div class="sa-actions"><button type="button" data-action="copyRequests">Copy artwork requests</button><button type="button" data-action="editArt">Edit art descriptions / reuse slots</button></div>
+    <h2>2. Generate one complete map</h2>
+    <p>Export the PNG reference and attach it in ChatGPT with the copied map prompt. Generate and download one complete map image.</p>
+    <p class="hint">The reference guides architecture and composition. Artwork can flow across grid boundaries. Image generation may shift walls or doors; expect to review and adjust them in Foundry.</p>
+    <div class="sa-actions"><button type="button" data-action="exportGuide">Export PNG reference</button><button type="button" data-action="copyMapPrompt">Copy map prompt</button></div>
   </section>
   <section class="sa-section">
-    <h2>3. Import and fit artwork</h2>
-    {{#unless sceneReady}}<p class="sa-status warning">Build a draft scene to save assignments and upload images.</p>{{/unless}}
-    <p class="hint">PNG, JPEG or WebP, up to 30 MB / 40 megapixels. Transparency is preserved; opaque backgrounds stay visible. Crop uses percentages of the original image. Contain preserves the whole crop; Cover fills the footprint and clips excess. Neither stretches it.</p>
-    {{#each assets}}
-    <details class="sa-asset" data-asset-id="{{id}}">
-      <summary><strong>{{id}}</strong> · {{kind}} · {{#if assigned}}assigned{{else}}needs image{{/if}}{{#if instances}} · {{instances}} instances{{/if}}</summary>
-      <p>{{description}}</p><p class="hint">{{requirements}} Intended width:height {{ratio}}:1.</p>
-      {{#if src}}<img class="sa-source-preview" src="{{src}}" alt="Original image for {{id}}"><p class="sa-path">{{src}}</p>{{/if}}
-      {{#if opaque}}<p class="sa-status warning">No transparency detected. Any background in this image remains visible.</p>{{/if}}
-      <label>Image file<input type="file" name="assetFile" accept="image/png,image/jpeg,image/webp"></label>
-      <div class="sa-grid sa-grid-crop">
-        <label>Fit<select name="fit"><option value="contain" {{#unless isCover}}selected{{/unless}}>Contain</option><option value="cover" {{#if isCover}}selected{{/if}}>Cover (clip)</option></select></label>
-        <label>Left %<input type="number" name="cropX" min="0" max="99.9" step="0.1" value="{{cropX}}"></label>
-        <label>Top %<input type="number" name="cropY" min="0" max="99.9" step="0.1" value="{{cropY}}"></label>
-        <label>Width %<input type="number" name="cropW" min="0.1" max="100" step="0.1" value="{{cropW}}"></label>
-        <label>Height %<input type="number" name="cropH" min="0.1" max="100" step="0.1" value="{{cropH}}"></label>
-      </div>
-      <div class="sa-fit-preview" aria-live="polite"></div>
-      <div class="sa-actions"><button type="button" data-action="previewAsset">Preview crop / fit</button><button type="button" data-action="saveAsset">Upload / save this slot</button></div>
-      <p class="hint">Preview does not upload. Save this slot before closing it or using other project actions; unsaved file selections and crop edits are temporary.</p>
-    </details>
-    {{/each}}
-  </section>
-  <section class="sa-section">
-    <h2>4. Assemble exact artwork</h2>
-    <div class="sa-grid sa-grid-4">
-      <label>Material repeat (cells)<input type="number" name="materialScale" min="0.25" max="20" step="0.25" value="{{art.settings.materialScale}}"></label>
-      <label>Wall width (cells)<input type="number" name="wallWidth" min="0.05" max="0.4" step="0.01" value="{{art.settings.wallWidth}}"></label>
+    <h2>3. Import and align the map</h2>
+    <label>Complete map image (PNG, JPEG or WebP, up to 30 MB)<input type="file" name="mapFile" accept="image/png,image/jpeg,image/webp"></label>
+    {{#if mapSource}}<p class="hint">Saved source: {{mapSource}}. Leave the file empty to reuse it.</p>{{/if}}
+    <p class="hint">The full image initially fits the scene's full rectangle. A different aspect ratio will stretch. Scale is centred; positive offsets move the image right/down. Preview again after changing values. Settings save when you apply.</p>
+    <div class="sa-grid sa-grid-3">
+      <label>Scale (%)<input name="mapScale" type="number" min="10" max="400" step="1" value="{{scale}}"></label>
+      <label>Horizontal offset (px)<input name="mapX" type="number" min="-8192" max="8192" value="{{offsetX}}"></label>
+      <label>Vertical offset (px)<input name="mapY" type="number" min="-8192" max="8192" value="{{offsetY}}"></label>
     </div>
-    <label class="sa-check"><input type="checkbox" name="shadows" {{#if art.settings.shadows}}checked{{/if}}> Soft contact shadows on props</label>
-    <label class="sa-check"><input type="checkbox" name="allowPlaceholders" {{#if art.settings.allowPlaceholders}}checked{{/if}}> Allow labelled synthetic placeholders for missing images (testing)</label>
-    <div class="sa-actions sa-wrap"><button type="button" data-action="saveSettings">Save settings</button>{{#if sceneReady}}<button type="button" data-action="previewScene">Preview assembled scene</button><button type="button" data-action="renderArt" class="sa-primary">Render to Foundry</button>{{/if}}</div>
-    <p class="hint">Save settings before previewing. Floors and textured boundaries become a grid-free background. Props become editable Tiles; re-rendering replaces generated Tiles from the plan. Door, secret door and window spans remain visually clear; use native Foundry door controls. Door-leaf art and animated vapour are not included in this milestone.</p>
+    <label class="sa-check"><input name="showWalls" type="checkbox" checked> Show live walls and doors in preview</label>
+    <p class="hint">Yellow: walls · Blue: doors · Purple: secret doors. The overlay is never baked into your map.</p>
+    <p class="sa-map-warning sa-status warning" role="status"></p>
+    <div class="sa-actions"><button type="button" data-action="previewMap">Preview alignment</button><button type="button" data-action="applyMap">Apply map background</button></div>
+    <div class="sa-map-preview"></div>
+  </section>
+  <section class="sa-section">
+    <h2>4. Refine in Foundry</h2>
+    <p>View the scene and use Foundry's wall controls to move wall endpoints, reposition doors or add/remove segments to match the artwork. Adjust lights as needed. Test movement and vision with a player token.</p>
+    <p class="hint">The module starts with geometry from the plan; it does not detect walls in the generated image. Reimporting changes only the background and preserves your native edits. Global image alignment cannot correct local changes in room shapes.</p>
+    <button type="button" data-action="viewScene">View scene</button>
   </section>
   {{/if}}
 </div>

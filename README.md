@@ -1,170 +1,158 @@
-# Scene Architect — scene art kits
+# Scene Architect
 
-Source version **0.2.0-alpha.2**, targeting **Foundry VTT 14.365**.
-Foundry's updater needs a published release ZIP at the manifest's download URL;
-pushing this source code alone does not create it. No AI API or external asset
-library is required.
+Scene Architect for Foundry VTT v14 creates **one coherently illustrated map with
+editable native walls, doors and lights**. You exchange a layout request and a map
+reference with ChatGPT manually. No API key, generator service or asset library is
+required.
 
-**Description → structured plan → exact geometry → scene-specific art kit → deterministic assembly → playable Foundry scene.**
+The module generates the initial Foundry geometry from a plan, exports a PNG
+reference, and imports your finished map as a single background. Machinery,
+pipes and scenery can flow across grid boundaries. It does not assemble separate
+prop images or repeated texture tiles in the current wizard.
 
-Scene Architect controls geometry, counts, footprints and rotations. ChatGPT supplies
-separate material and prop images through a manual exchange. An image model never
-needs to trace a floor plan or arrange a precise sprite sheet.
+**Alignment is a starting point, not a guarantee.** An image generator can move or
+redraw architecture despite the reference. Scene Architect does not detect walls
+from pixels. Review the overlay and adjust native walls and doors to match the art.
 
-## Update your existing alpha.8 installation
+## Current build and installation
 
-There are two installation paths: upload the module files manually, or publish the
-release ZIP so Foundry's updater can download it.
+**0.2.0-alpha.3** introduces the complete-map workflow. Update Scene Architect in
+Foundry's Add-on Modules screen, then hard-refresh your browser. Confirm the
+installed version is **0.2.0-alpha.3**. The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.3)
+also provides the module ZIP for manual installation.
 
-### Foundry updater: resolve a release ZIP “Not Found” error
+For a manual server refresh, stop Foundry and replace the files in
+`Data/modules/scene-architect/` with `module.json`, `README.md`, and the complete
+`scripts/`, `styles/`, `templates/` and `fixtures/` directories from this checkout.
+Restart Foundry, hard-refresh your browser and check the module version.
+Existing world scenes and artwork are preserved. There is no runtime build step.
 
-The manifest points to the release asset named `scene-architect.zip` under tag
-`v0.2.0-alpha.2`. A source push updates the manifest but does not create that release
-asset. If it is missing, Foundry reports “Not Found” and cannot install the update.
-
-From the repository root, build and verify the archive:
+Alternatively, create the verified module archive:
 
 ```powershell
 powershell -NoProfile -File tools/package-module.ps1
 ```
 
-Then create a GitHub release tagged **v0.2.0-alpha.2** from the commit containing this
-version. Attach **dist/scene-architect.zip** and **dist/module.json**, and publish the
-release (a draft is not publicly downloadable). The ZIP's filename and tag must match
-the manifest exactly. GitHub's automatic “Source code” downloads do not replace this
-asset. Packaging locally does not publish anything.
+Extract `dist/scene-architect.zip` into that module directory. The archive has
+`module.json` at its root. It excludes tests, dependencies and experiments.
 
-Once that asset is available, retry the module update in Foundry and hard-refresh your
-browser. Confirm the installed version is **0.2.0-alpha.2**. For future versions, prepare
-the archive and its release asset before exposing a manifest that points to them.
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.3` must
+contain `scene-architect.zip` and `module.json`. A source push alone does not create
+those assets and will cause a download “Not Found” error if the manifest points to
+an unpublished release. Prepare the release assets before exposing that manifest.
 
-### Manual installation without a GitHub release
+## Intended flow
 
-1. Stop Foundry on the VM.
-2. Copy this checkout's `module.json`, complete `scripts/`, `styles/`, `templates/`
-   and `fixtures/` into the existing `Data/modules/scene-architect/` directory,
-   replacing the matching files. Include **all** scripts and the new fixtures directory.
-3. Start Foundry and hard-refresh your browser to load the new JavaScript and template.
-4. Confirm the installed module version is **0.2.0-alpha.2**. Keep Scene Architect
-   enabled in your world. Existing scene data and uploaded artwork live in world data;
-   replacing the module files does not migrate or render those scenes automatically.
+1. As GM, open **Scenes → Scene Architect**. Load the laboratory example, or enter
+   a brief, **Copy layout request**, send it to ChatGPT and **Import / edit plan JSON**
+   with the returned layout.
+2. **Build draft scene**. This creates the scene, native walls, doors and lights,
+   and a schematic reference background. It does not create prop Tiles.
+3. **Export PNG reference** and **Copy map prompt**. Attach the PNG in ChatGPT with
+   that prompt. Generate and download **one complete map image**.
+4. Choose that image under **Import and align the map**, then **Preview alignment**.
+   Yellow lines are current walls, blue lines are ordinary doors, and purple lines
+   are secret doors. Toggle the overlay off to inspect the artwork alone.
+5. If necessary, change **Scale (%)**, **Horizontal offset** or **Vertical offset**,
+   then preview again. **Apply map background** saves the source and alignment and
+   replaces the background. The coloured overlay is never baked into the map.
+6. **View scene**. Use Foundry's wall controls to move endpoints, reposition doors,
+   and add or remove wall segments where the illustration differs. Adjust lights
+   and test movement and vision with a player token.
+7. Reopen the wizard to reuse the saved original image or import a replacement.
+   Applying again preserves all current native walls, doors, lights and Tiles.
 
-There is no runtime build step. Omit `node_modules/`, `tests/` and `test-output/`.
+Settings and file selections save when you apply. Leaving the file input empty
+reuses the saved source. The module always fits from the original image, avoiding
+repeated resampling of an already fitted background.
 
-## First test: geometry and persistence, without generating art
+## Quick server test
 
-1. Open **Scenes → Scene Architect → Load laboratory example → Build draft scene**.
-2. Enable **Allow labelled synthetic placeholders**, then **Save settings**.
-3. Choose **Preview assembled scene**, then **Render to Foundry**. Expect five rooms,
-   exactly three restraint beds and 11 editable prop/decal Tiles overall.
-4. Open and close native doors, inspect grid alignment and try moving a prop Tile.
-5. Close/reopen the wizard. Confirm it restores the linked scene and settings.
-6. Move a native wall and try rendering again. It must refuse with a geometry conflict.
-   Undo the wall move to resume. Re-rendering replaces generated Tile placements only
-   after confirmation; native walls remain untouched.
+1. Load the laboratory and build a **new** draft. Expect a 28×24 scene at 70px per
+   square, five rooms, two ordinary doors, one secret door, one open passage and
+   three native lights. Expect **zero generated prop Tiles**.
+2. Export the PNG and attach it with the copied prompt in ChatGPT. The prompt asks
+   for all 11 illustrated features, including three restraint beds. These are
+   requested illustration details, not mechanically guaranteed image counts.
+3. Import the returned full map, preview the overlay and apply it. Check the
+   machinery reads as part of the complete illustration and no guide labels remain.
+4. Move one wall endpoint and reposition a door in Foundry. Reopen Scene Architect,
+   preview and apply again. Both edits must remain; a geometry difference must not
+   block the import. Open/close the doors and test token vision and collision.
+5. Close/reopen the wizard and refresh the browser. Confirm the saved image returns.
+   Try a small image offset, preview and reapply; native geometry must stay fixed.
 
-This establishes whether the module works in your actual Foundry installation before
-spending time generating the art kit. Placeholder appearance is intentionally basic.
+To test the import mechanics before generating art, use the exported reference PNG
+as the input image. Its labels are part of that test image and will remain visible;
+this checks file handling and alignment only, not final visual quality.
 
-## Intended workflow with your artwork
+Report the Foundry/module versions, the step that failed, expected versus actual
+behaviour and any browser-console error. For image alignment feedback, distinguish
+an overall shift/scale problem from individual rooms or doors being redrawn.
 
-1. As GM, open **Scenes → Scene Architect**.
-2. Choose **Load laboratory example**, then **Build draft scene**. Alternatively,
-   describe a map, copy its layout request to ChatGPT, and import the returned JSON.
-3. Choose **Copy artwork requests**. The prompt requests the complete kit sequentially,
-   with one separate image per used slot and no confirmation between assets. Download
-   the images individually. Generation limits may still interrupt completion; the prompt
-   asks the model to identify completed and remaining slots so you can resume. Requests
-   include intended proportions and shared art direction.
-4. Expand a slot, choose PNG, JPEG or WebP, adjust crop percentages and **Preview crop / fit**.
-   **Contain** shows the entire crop with transparent space around it; **Cover** fills
-   the footprint and clips excess. Both preserve aspect ratio. Use Cover for material
-   swatches when you want a filled square repeat.
-5. **Upload / save this slot**. Alpha is preserved. Opaque backgrounds remain visible:
-   there is no automatic background removal. The sampled transparency warning is
-   advisory; inspect the checkerboard preview yourself.
-6. Save material repeat size, wall width and shadow settings. Choose **Preview assembled
-   scene**, then **Render to Foundry**.
-7. Floors, surrounding rock and textured boundaries become a static PNG background.
-   Props and decals become editable Tiles. Use native walls, doors and lights in play;
-   the renderer adds no grid.
-8. Reopen the wizard while viewing the scene, or select it in **Reopen**. Saved image
-   assignments, crops, references and rendering settings return.
+## Alignment and manual edits
 
-To test without artwork, enable **Allow labelled synthetic placeholders**, **Save settings**,
-then preview/render. Missing images normally block rendering. The laboratory has
-**three restraint beds sharing one image**, two medical beds sharing another, two broken
-constructs sharing another, an Instantiator, generator, stairs and vapour decal:
-**11 feature instances and 11 required images** (four materials, seven prop/decal images).
-Placeholders are deliberately labelled and do not represent finished visual quality.
+The initial fit maps the image's full rectangle to the scene's full rectangle.
+A different aspect ratio stretches the image; both preview and confirmation warn
+about this. Request the reference's aspect ratio and inspect the result. Scaling
+is centred on the canvas; positive offsets move the art right/down. Enlarging or
+shifting can crop edges, and uncovered space is filled dark. These controls cannot
+correct local changes in room shape: edit the relevant Foundry walls instead.
 
-Slots save individually. Save a file selection/crop before other project actions or
-closing the wizard. Imported plans are saved when you build their first draft.
-**Import / edit plan JSON** starts a new project; **Build a new scene from plan** leaves
-the original scene intact.
+The overlay always reads **live wall coordinates and door types**. Geometry
+changes are advisory, not a requirement to undo your work. Exported references
+also use live walls, but room fills, labels and numbered feature footprints still
+come from the original plan. They do not reconstruct rooms from edited walls.
 
-## Geometry and manual edits
+Native edits are stored by Foundry. **Download original plan JSON** exports the
+original plan; it does not include your subsequent wall edits or imported map.
+**Import / edit plan JSON** and **Build a new scene from plan** start a new scene
+and leave the previous scene intact. Use Foundry's scene export and copy its
+referenced image files when transferring a finished scene.
 
-The **saved rectangular plan is the source of truth** for assembled artwork. Before
-preview, rendering or SVG guide export, the module compares native walls, door types,
-blocking rules, scene dimensions, padding, grid offsets and background transforms with
-that plan. Conflicts block the operation and explain reconciliation. Door open/closed/
-locked state and harmless grid-edge wall segmentation do not cause conflicts.
-Existing native walls are never replaced.
+The wizard supports one level, zero scene padding/grid shift, and default level
+background transforms. New drafts use those settings. If changed externally,
+reset them before using the alignment preview; wall and door edits remain valid.
 
-Reconcile by undoing the native change, or downloading the plan, updating its rooms,
-openings or barriers, reimporting it and building a new scene. Arbitrary wall-to-room
-reconstruction is not supported. Reset changed background transforms to zero offset/
-rotation and unit scale. Only one scene level is supported.
+## Existing scenes and files
 
-Props use top-left x/y and width/height in **cells**, with clockwise rotation about their
-footprint centre. Rotated footprints must fit inside a room. Overlapping props, blocked
-doorway approaches (half a cell on both sides), invalid asset references, out-of-bounds
-geometry, overlapping rooms and openings not on walls are rejected. Decals may overlap
-props. Disconnected rooms produce a warning. Connectivity checks do not solve pathfinding
-around furniture or interior barriers: review token circulation yourself.
+Valid older plans can reopen. Old art manifests and assignments are retained for
+compatibility, but the wizard no longer asks for individual assets or renders them.
+It does not automatically alter an existing scene when opened.
 
-Moving generated Tiles in Foundry does not update saved features. Re-rendering asks
-before replacing generated Tiles, including manual edits. Other Tiles, native walls and
-lights remain. Edit the plan to retain a placement on subsequent renders. Uploaded
-sources and previous render files are retained; unused files are not deleted automatically.
+Older generated prop Tiles remain above any replacement background. The wizard
+warns when they exist. For a clean whole-map test, build a new draft from the plan;
+otherwise remove unwanted old Tiles using Foundry's controls. Unrelated Tiles are
+also preserved.
 
-Door, secret-door and window spans remain visually clear. There is **no door-leaf art or
-window framing** in this milestone, so a closed door is never permanently painted into
-the background. Secret passages are visible in the art even though native secret-door
-controls are hidden from players. Do not rely on this art treatment to conceal entrances.
-New multi-cell doors are one native door each; old per-cell doors remain untouched.
+World uploads live under `worlds/<world-id>/scene-architect/`. Original sources and
+previous backgrounds are retained. Unused files are not automatically deleted.
+Project data lives in `flags.scene-architect.plan`; the new image source and
+alignment are in `flags.scene-architect.map`. A revision marker rejects stale
+saves from another wizard (best effort, not a distributed lock).
 
-## Manifest and compatibility
+If an upload fails, the current background stays in place. A background-update
+failure attempts to restore it; the uploaded source/settings may already be saved
+so you can retry. Server-side partial failures can require manual recovery.
 
-See [fixtures/laboratory.json](fixtures/laboratory.json). Plans use `version: 2`; the
-independently versioned art manifest uses `art.version: 1`. Valid version-1 plans migrate
-in memory and save only through a user action. Migration creates deterministic material
-IDs and one prop slot per legacy feature, without guessing which machines share art.
-Use **Edit art descriptions / reuse slots** to reference one asset ID from repeated
-features. Old plans failing strengthened validation need correction before use; unknown
-future versions are rejected.
+## Limits
 
-| Data | Purpose |
-| --- | --- |
-| `art.direction` | Shared palette, perspective and lighting guidance |
-| `art.assets[]` | Stable ID, kind, description, width:height ratio and image requirements |
-| `spaces[].floorAsset` | Floor material reference |
-| `features[].assetId` | Shared prop image reference |
-| `features[].roomId / rotation / layer` | Placement room, clockwise angle, prop or decal |
-| `art.surroundAsset / wallAsset` | Surround and wall material references |
-| `art.assignments[id]` | Persistent source path, contain/cover fit, normalized crop, metadata |
-| `art.settings` | Material repeat, wall width, contact shadows and placeholder mode |
+- Initial plans use rectangular rooms and orthogonal walls. You can edit native
+  walls freely afterward; the module does not rebuild them on image import.
+- No automatic tracing, image segmentation, per-asset imports or API generation.
+- No guarantee that generated room shapes, door positions or feature counts
+  match the reference. Native geometry follows the plan until you adjust it.
+- Doors drawn into the artwork remain static. The prompt requests ordinary doors
+  drawn open, but check the generated result. Review secret-door concealment too.
+- Whole-map features are painted into the background; they are not movable props.
+- PNG, JPEG and WebP inputs: up to 30 MB and 40 megapixels. Fitted images and
+  references: up to 8192px per side and 24 megapixels.
+- Image quality and generation fidelity require visual assessment. Synthetic
+  tests do not establish how much wall correction an actual generated map needs.
 
-The complete plan is stored at `flags.scene-architect.plan`. A revision marker detects
-stale saves from another wizard (best effort, not a distributed lock). Exported JSON
-contains assignments/settings but no image bytes; transferring worlds requires copying
-referenced files too. Only used slots appear in requests/import controls. Identical prop
-footprints reuse one source and one fitted texture.
+## Development verification
 
-## Verification
-
-Node 22+ is required for the development harness:
+With Node 22+:
 
 ```powershell
 npm ci
@@ -172,76 +160,23 @@ npm test
 npm run test:browser
 ```
 
-The browser runner uses an isolated headless Edge profile on Windows. Set
-`SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It binds a
-short-lived localhost server and writes results, synthetic assembled PNGs and a wizard
-screenshot into ignored `test-output/`. Handlebars is a development-only dependency;
-Foundry supplies it at runtime.
+The browser harness uses isolated headless Edge on Windows. Set
+`SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
+results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Automated tests cover geometry, validation, multi-cell/legacy doors, references, rotation,
-placement, shared assets, persistence, removal of old assignments, conflicts, Tile
-replacement and rollback. Browser checks inspect real Canvas pixels and PNG alpha and
-run the production Handlebars template and UI handlers. **Foundry document, upload and
-application APIs are mocked.** This does not establish real-world Foundry integration.
+Local verification for this change: **26 core tests and 35 browser assertions**
+passed. Coverage includes full-map import, exact output dimensions, live edited
+wall overlays, omission of overlays from the uploaded background, offsets,
+saved-source reuse, preservation of native edits and Tiles, cancelled application,
+upload failure and background rollback. Retained legacy renderer checks also run.
+The reference and wizard screenshot were visually inspected.
 
-Local verification on 2026-09-24: **21 core tests and 28 headless-browser assertions
-passed**. The synthetic assembly and wizard screenshot were visually inspected.
+Canvas rendering and PNG encoding/decoding run in a real browser. **Foundry host,
+document and upload APIs are mocked.** Verification on the user's Foundry server
+remains necessary.
 
-### Manual verification in Foundry 14.365
-
-1. Build the laboratory in a test world. Confirm five rooms, two ordinary doors, one
-   secret door, one open passage, three native lights and a 28×24 / 70px canvas.
-2. Render placeholders. Count three restraint beds, two medical beds, two construct
-   piles and four other objects (11 Tiles). Inspect circulation with the native grid.
-3. Import transparent PNG, opaque JPEG and non-square WebP examples. Test crop,
-   Contain/Cover, preserved alpha, visible opaque backgrounds, rotation and shadows.
-4. Close/reopen and refresh the browser. Check paths, crops and settings. Export JSON,
-   import it into a new project and verify references survive.
-5. Open, close and lock doors; ensure no closed door leaf persists in the background.
-   Test native collision, vision and lighting with a player token.
-6. Move/delete a wall or change a door type. Reopen and attempt preview/render/SVG:
-   operations must refuse without altering the scene. Undo and retry. Repeat with a
-   grid shift or background transform.
-7. Move a generated Tile and add an unrelated Tile. Cancel re-render first, then accept:
-   generated Tiles reset while unrelated Tiles and walls remain.
-8. Reopen a valid alpha.8 plan with a wide doorway. Verify migration without wall writes.
-   Keep a copy of old JSON when correcting validation errors.
-9. Test upload failures, missing paths, slow uploads and another GM editing the project.
-   Previous art should survive ordinary failures. Server-side partial failures may need
-   manual recovery; rollback is best effort.
-
-API shapes were checked against official v14.365 documentation for
-[TileData](https://foundryvtt.com/api/v14/interfaces/foundry.documents.types.TileData.html),
-[LevelData](https://foundryvtt.com/api/v14/interfaces/foundry.documents.types.LevelData.html),
-[WallData](https://foundryvtt.com/api/v14/interfaces/foundry.documents.types.WallData.html)
-and [DialogV2](https://foundryvtt.com/api/v14/classes/foundry.applications.api.DialogV2.html).
-Actual Foundry runtime verification remains outstanding.
-
-When reporting feedback, include the Foundry/module versions, the button or step that
-failed, what happened versus what you expected, and any notification or browser-console
-error. Note whether you used the laboratory fixture or an older saved scene.
-
-## Limits
-
-- Rectangular rooms, orthogonal boundaries, one level; no polygon or wall reconstruction.
-- No image generation during development, server AI integration or FA library dependency.
-- No segmentation, sprite-sheet slicing, background removal, door-leaf art, pipe/cable
-  routing or animated vapour. Vapour is a static decal below props.
-- Tiling seams, palette coherence and final beauty depend on imported artwork; synthetic
-  tests cannot establish production visual quality.
-- Material scale is shared across surfaces. Crop/fit is shared per asset; different
-  footprints fit the same source independently. Props do not add collision walls.
-- Rendering is limited to 8192px per side / 24 megapixels; inputs to 30 MB / 40 megapixels.
-  Large maps may still be slow on low-memory browsers.
-- The former whole-map image handoff is superseded by this art-kit workflow. Existing
-  backgrounds remain until the GM explicitly renders new artwork.
-
-## Code layout
-
-- `plan.js`: normalization, placement validation and connectivity warnings.
-- `geometry.js`: exact segment compilation.
-- `art-manifest.js`: migration, references, assignments and requests.
-- `renderer.js`: Canvas assembly and fitting, independent of Foundry.
-- `project.js`: persistence, conflicts and managed Tile application.
-- `foundry-data.js`: native wall/light document data.
-- `scene-architect.js`: Foundry application, dialogs, imports and workflow actions.
+Code: `scene-architect.js` owns the wizard; `whole-map.js` handles references,
+prompts and full-map rendering; `plan.js`, `geometry.js` and `foundry-data.js`
+provide initial geometry; `project.js` saves project state. Legacy art modules are
+retained for compatibility. The abandoned atlas experiment is outside the runtime
+package and is not part of this workflow.

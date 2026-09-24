@@ -31,6 +31,14 @@ function drawFitted(ctx,img,assignment,w,h) {
   ctx.drawImage(img,img.width*c.x,img.height*c.y,sw,sh,d.x,d.y,d.width,d.height);ctx.restore();
 }
 
+export function renderMaterialPreview(img,assignment,size=100) {
+  const tile=makeCanvas(size,size),canvas=makeCanvas(size*3,size*3);
+  drawFitted(tile.getContext('2d'),img,assignment,size,size);
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle=ctx.createPattern(tile,'repeat');ctx.fillRect(0,0,canvas.width,canvas.height);
+  return canvas;
+}
+
 export function renderProp(img,assignment,width,height,{shadows=true,placeholder=false}={}) {
   const canvas=makeCanvas(width,height),ctx=canvas.getContext('2d');
   if(placeholder) {

@@ -26,6 +26,11 @@ export function usedAssets(plan) {
   return plan.art.assets.filter(a=>ids.has(a.id));
 }
 
+export function artworkProgress(plan) {
+  const assets=usedAssets(plan),missing=assets.filter(a=>!plan.art.assignments[a.id]);
+  return {total:assets.length,assigned:assets.length-missing.length,next:missing[0]??null};
+}
+
 export function validateArt(plan) {
   const art=plan.art;
   if(!art||art.version!==1) throw new Error('Unsupported art manifest; expected art.version 1.');
@@ -56,7 +61,26 @@ export function validateArt(plan) {
   return plan;
 }
 
+function assetInstructions(plan,a) {
+  const requirements=a.kind==='material'
+    ? 'Seamless, tileable SQUARE material swatch. Fill the entire image edge to edge with opaque texture. Flat, uniform illumination across the whole frame takes priority over directional lighting in the shared style. Opposite edges should join when repeated. NO vignette, darkened corners, edge fade, spotlight, border, ground plane, isolated rock object, furniture, door leaves or map layout. Prefer a square PNG, at least 512px.'
+    : 'Exactly one isolated subject, tightly framed in true overhead view. Transparent PNG with actual alpha, not a painted checkerboard or opaque background. No ground plane or baked cast shadow. Prefer at least 512px on the long side. If transparency is unavailable, say so; do not present an opaque background as transparent.';
+  return `IMPORT SLOT: ${a.id}\nType: ${a.kind}\nSubject: ${a.description}\nIntended width:height: ${a.kind==='material'?'1.00':a.ratio.toFixed(2)}:1\nRequirements: ${a.requirements}\n${requirements}\nInstances using this image: ${a.kind==='prop'?plan.features.filter(f=>f.assetId===a.id).length:'surface material (repeated)'}\nSuggested download name: ${a.id}.png. The filename identifies the import slot; do not print it in the image.`;
+}
+
+function sharedInstructions(plan) {
+  return `SCENE ART KIT — ${plan.scene.name}\n\nSHARED VISUAL DIRECTION\n${plan.art.direction}\nTrue overhead orthographic view; consistent palette; no grid, text or frame. The slot requirements below override lighting or framing that would make a material unsuitable for repetition. Scene Architect handles placement, geometry and instance counts.`;
+}
+
+export function artworkRequest(plan,id) {
+  validateArt(plan);
+  const asset=usedAssets(plan).find(a=>a.id===id);
+  if(!asset)throw new Error(`No used artwork slot named ${id}.`);
+  // Do not include the whole scene brief: it can turn a material request into a scene illustration.
+  return `${sharedInstructions(plan)}\n\nUse image generation to create ONE image for ONLY the import slot below. Return the image itself, not code, a plan, a sprite sheet or a full scene. The GM will download it and request the next slot separately. Even when reused several times, render just one subject.\n\n${assetInstructions(plan,asset)}`;
+}
+
 export function artworkRequests(plan) {
   validateArt(plan);
-  return `SCENE ART KIT — ${plan.scene.name}\n${plan.scene.description}\n\nGenerate ALL import slots below as separate individual images/files. Work through every slot sequentially, generating exactly one image per slot, and continue automatically to the next until the full kit is complete. Do not stop after the first asset or ask for confirmation between assets. Preserve each slot's intended proportions and image requirements: materials must be seamless square textures, and props must show exactly one isolated subject with transparency where requested. Multiple images may require several generations and downloads. If an actual generation limit prevents completion, identify the completed and remaining slots so work can resume; do not claim ungenerated assets are complete. Do not make a sprite sheet or a whole map. Geometry, placement, rotation and instance counts are handled by Scene Architect. Generated pixel boundaries need not be exact.\n\nSHARED VISUAL DIRECTION\n${plan.art.direction}\nAll images: true overhead orthographic view; consistent palette and neutral lighting; no grid, labels, text or frame. Do not include permanent floor shadows with props.\n\n${usedAssets(plan).map(a=>`IMPORT SLOT: ${a.id}\nType: ${a.kind}\nSubject: ${a.description}\nIntended width:height: ${a.ratio.toFixed(2)}:1\nRequirements: ${a.requirements}\n${a.kind==='material'?'Tileable material only; no furniture, door leaves or architectural plan. Prefer a square PNG, at least 512px.':'Exactly one isolated subject; transparent PNG preferred, at least 512px on the long side. If transparency is unavailable, say so; an opaque background will remain visible after import.'}\nInstances using this image: ${a.kind==='prop'?plan.features.filter(f=>f.assetId===a.id).length:'surface material (repeated)'}\nSave separately using ${a.id}.png.`).join('\n\n')}`;
+  return `${sharedInstructions(plan)}\n\nOPTIONAL FULL-KIT REQUEST\nGenerate ALL import slots below sequentially, one separate image/file per slot. Continue through the kit if your image-generation interface permits. Multiple images may require several generations and downloads. If you stop or reach a limit, identify the completed and remaining slots. Do not claim ungenerated assets are complete. The GM can instead send an individual slot request for each image. Do not combine slots in one image or sprite sheet.\n\n${usedAssets(plan).map(a=>assetInstructions(plan,a)).join('\n\n')}`;
 }

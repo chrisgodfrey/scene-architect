@@ -4,6 +4,7 @@ import {usedAssets} from '../scripts/art-manifest.js';
 import {compileGeometry} from '../scripts/geometry.js';
 import {wallDataFromSegment} from '../scripts/foundry-data.js';
 import {projectFromScene} from '../scripts/project.js';
+import {renderGuide,renderWholeMap} from '../scripts/whole-map.js';
 import {applyDocumentUpdate} from './mock-update.js';
 
 const results=[],assert=(truth,message)=>{if(!truth)throw new Error(message);results.push(message);};
@@ -73,28 +74,45 @@ try {
     async deleteEmbeddedDocuments(type,ids){this.tiles=this.tiles.filter(t=>!ids.includes(t.id));}};
   scenes.set(scene.id,scene);
   const app=new SceneArchitectApp();app.workflow=projectFromScene(scene);await app.render();
-  assert(document.querySelectorAll('[data-asset-id]').length===11,'Production template exposes exactly 11 used import slots');
-  let card=document.querySelector('[data-asset-id="restraint-bed"]');card.open=true;
-  const transfer=new DataTransfer();transfer.items.add(new File([bedBlob],'synthetic-bed.png',{type:'image/png'}));card.querySelector('[name="assetFile"]').files=transfer.files;
-  await app.previewAsset(card.querySelector('[data-action="previewAsset"]'));
-  assert(!!card.querySelector('.sa-fit-preview canvas'),'Asset preview draws from a selected ordinary PNG file');
-  const trigger=async action=>{app.element.querySelector(`[data-action="${action}"]`).click();while(app.busy)await new Promise(r=>setTimeout(r,10));};
-  // The first save button is for a material, so dispatch the bed slot explicitly.
-  card.querySelector('[data-action="saveAsset"]').click();while(app.busy)await new Promise(r=>setTimeout(r,10));
-  assert(uploads.length===1&&scene.flags['scene-architect'].plan.art.assignments['restraint-bed'].hasAlpha,'Real delegated save-slot action uploads and persists alpha assignment');
+  assert(document.querySelectorAll('[name="mapFile"]').length===1&&!document.querySelector('[data-asset-id]'),'Wizard requests one complete map with no asset slots');
+  const guide=renderGuide(p,scene);
+  assert(guide.width===1960&&guide.height===1680,'PNG reference uses the exact full-scene dimensions');
+  await fetch('/output/map-reference.png',{method:'POST',body:await canvasBlob(guide)});
+  const transfer=new DataTransfer();transfer.items.add(new File([await canvasBlob(source)],'whole-map.png',{type:'image/png'}));app.element.querySelector('[name="mapFile"]').files=transfer.files;
+  await app.previewMap();
+  assert(!!app.element.querySelector('.sa-map-preview canvas'),'Selected complete image produces a real canvas overlay preview');
+  assert(app.element.querySelector('.sa-map-warning').textContent.includes('aspect ratio'),'Different aspect ratio produces a visible stretching warning');
+  scene.walls[0].c=[15,35,200,35];scene.walls[0].door=1;
+  const withWalls=renderWholeMap(source,scene,{},true),withoutWalls=renderWholeMap(source,scene,{},false);
+  assert(same(pixel(withWalls,100,35),[56,189,248,255]),'Preview uses edited native door coordinates and type');
+  assert(same(pixel(withoutWalls,100,35),[255,0,0,255]),'Applied image contains no wall overlay');
+  const shifted=renderWholeMap(source,scene,{scale:1,x:100,y:50});
+  assert(same(pixel(shifted,10,10),[24,26,31,255])&&same(pixel(shifted,200,200),[255,0,0,255]),'Global offsets reposition image and fill exposed canvas');
+  scene.tiles=[{id:'legacy',flags:{'scene-architect':{generated:true}}},{id:'custom',flags:{}}];
+  const documents=JSON.stringify([scene.walls,scene.tiles]);
+  let confirmText='';foundry.applications.api.DialogV2.confirm=async options=>{confirmText=options.content;return true;};
+  await app.applyMap();
+  assert(uploads.length===2&&scene.firstLevel.background.src.endsWith('-map.png'),'Apply uploads the original source and fitted full-map background');
+  assert(JSON.stringify([scene.walls,scene.tiles])===documents,'Applying preserves manually edited walls and all existing Tiles');
+  assert(confirmText.includes('older Scene Architect prop Tiles')&&confirmText.includes('aspect ratio'),'Confirmation explains legacy Tiles and aspect-ratio stretch');
+  const uploadedMap=await loadImage(scene.firstLevel.background.src);
+  assert(same(pixel(renderWholeMap(uploadedMap,scene),100,35),[255,0,0,255]),'Encoded uploaded PNG has no preview overlay');
   const reopened=new SceneArchitectApp();reopened.workflow=projectFromScene(scene);await reopened.render();
-  assert(reopened.plan.art.assignments['restraint-bed'].src.includes('/output/'),'Reopening restores assigned image paths');
-  reopened.element.querySelector('[name="allowPlaceholders"]').checked=true;
-  await reopened.saveSettings();
-  assert(scene.flags['scene-architect'].plan.art.settings.allowPlaceholders,'Render settings persist through real UI handler');
-  await reopened.renderArt();
-  assert(scene.tiles.length===11&&scene.firstLevel.background.src.includes('background.png'),'Render action uploads a background and creates exactly 11 editable Tiles (mock Foundry)');
-  assert(scene.tiles.filter(t=>t.flags['scene-architect'].assetId==='restraint-bed').every(t=>t.texture.src===scene.tiles[0].texture.src),'All three native restraint Tiles share one uploaded prop image');
-  const before=uploads.length;scene.walls[0].c[0]++;
-  let blocked=false;try{await reopened.renderArt();}catch(e){blocked=/Native walls differ/.test(e.message);}
-  assert(blocked&&uploads.length===before,'Wall conflict blocks UI rendering before any uploads or writes');
-  await reopened.render();assert(reopened.element.textContent.includes('Geometry conflict:'),'Wizard shows a reconciliation explanation for native wall edits');
-  scene.walls[0].c[0]--;await reopened.render();
+  assert(reopened.workflow.map.src.includes('-source.png'),'Reopen restores original full-map source');
+  assert(reopened.element.textContent.includes('Manual wall and door edits are supported'),'Native edits show an advisory without blocking the workflow');
+  reopened.element.querySelector('[name="mapX"]').value='12';
+  const uploadCount=uploads.length;
+  await reopened.previewMap();await reopened.applyMap();
+  assert(uploads.length===uploadCount+1&&scene.getFlag('scene-architect','map').x===12,'Reapply reuses original source and persists new alignment');
+  const background=scene.firstLevel.background.src;
+  foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyMap();
+  assert(scene.firstLevel.background.src===background&&uploads.length===uploadCount+1,'Cancelling application preserves the background and performs no upload');
+  foundry.applications.api.DialogV2.confirm=async()=>true;
+  const originalUpload=foundry.applications.apps.FilePicker.upload;
+  foundry.applications.apps.FilePicker.upload=async()=>({error:'simulated upload failure'});
+  let failed=false;try{await reopened.applyMap();}catch(e){failed=e.message.includes('simulated upload failure');}
+  assert(failed&&scene.firstLevel.background.src===background,'Upload failure leaves the existing background intact');
+  foundry.applications.apps.FilePicker.upload=originalUpload;
   globalThis.Scene={implementation:{async create(data){
     const draft={...scene,...structuredClone(data),id:'new-draft',walls:[],lights:[],tiles:[],firstLevel:{background:{src:''},async update(change){this.background.src=change['background.src'];}},
       async view(){},async createEmbeddedDocuments(type,items){const docs=items.map((x,i)=>({...x,id:type+'-'+i}));this[type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles'].push(...docs);return docs;}};
@@ -102,10 +120,10 @@ try {
   }}};
   const fresh=new SceneArchitectApp();fresh.usePlan(structuredClone(fixture));await fresh.buildDraft();
   assert(fresh.scene.walls.filter(w=>w.door===1).length===2&&fresh.scene.walls.filter(w=>w.door===2).length===1,'Draft action creates native wide doors and secret door (mock Foundry)');
-  assert(fresh.scene.lights.length===3&&fresh.scene.firstLevel.background.src.endsWith('wireframe.svg'),'Draft action creates three native lights and a geometry guide (mock Foundry)');
+  assert(fresh.scene.lights.length===3&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates three native lights and a geometry guide (mock Foundry)');
   assert(!!fresh.scene.getFlag('scene-architect','revision'),'New draft is linked and persisted for reopening');
   await reopened.render();
-  document.querySelector('[data-asset-id="restraint-bed"]').open=true;
+  await reopened.previewMap();
   document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
   document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
   document.querySelector('#assembly').style.display='none';

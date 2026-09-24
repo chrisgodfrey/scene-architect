@@ -1,0 +1,8 @@
+Use case: stylized-concept. Asset type: production texture atlas for a top-down Foundry VTT laboratory map.
+Generate ONE square PNG image, ideally 1536 x 1536, containing exactly FOUR material textures in a strict 2-column by 2-row atlas. The four equal square cells meet at the exact horizontal and vertical midlines. No outer margin, no spacing or divider between cells. The software will cut exactly at the midlines. Do NOT draw a map, room, objects, labels, lettering, numbers, border or UI.
+Top-left cell: dark charcoal natural underground rock material, irregular craggy rock surface, small-scale details.
+Top-right cell: warm-grey rough-cut stone wall cap material seen straight from above, small stone detail with subdued copper mineral flecks.
+Bottom-left cell: worn dark-grey stone laboratory floor material, irregular subtle stone joints, no visible battlemap grid.
+Bottom-right cell: aged metal laboratory floor material, dark iron, subdued copper wear, subtle small rivets, no visible battlemap grid.
+Cohesive detailed painterly fantasy steampunk palette: charcoal and grey stone, aged copper and dark iron. All FOUR materials must fill their own square cell completely and be opaque. Each cell is its own seamless repeating texture: left edge joins right edge and top edge joins bottom edge WITHIN THAT CELL. Even diffuse illumination throughout each cell, no highlights or shadows implying a whole object.
+Absolutely NO vignette, darkened edges, edge fading, spotlight, transparent areas, framing, floor perspective or decorative objects. Do not soften or feather the cell boundaries. Return just this one four-material texture atlas.
