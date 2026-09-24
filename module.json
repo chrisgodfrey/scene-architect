@@ -1,11 +1,11 @@
 {
   "id": "scene-architect",
   "title": "Scene Architect",
-  "description": "Prompt-to-wireframe workflow for creating grid-exact Foundry VTT scenes with deterministic walls, doors, windows and lights.",
-  "version": "0.1.0-alpha.8",
+  "description": "Scene-specific art kits, exact rectangular geometry and editable prop Tiles for Foundry VTT v14.",
+  "version": "0.2.0-alpha.1",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.1.0-alpha.8/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.1/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"

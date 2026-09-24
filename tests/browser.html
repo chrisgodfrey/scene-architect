@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Scene Architect browser verification</title>
+<link rel="stylesheet" href="/styles/scene-architect.css">
+<style>
+body{background:#151922;color:#eee;font:15px system-ui;margin:20px}button,input,select,textarea{background:#292f3c;color:#eee;border:1px solid #687080;border-radius:4px;padding:7px;font:inherit}button{cursor:pointer}button:hover{background:#424b60}h1{font-size:22px}summary{cursor:pointer}.scene-architect{max-width:1000px;margin:auto}.sa-shell{min-width:0!important}.sa-actions>*{flex:1}.sa-actions{align-items:center}.sa-grid{margin-top:12px}#results{white-space:pre-wrap;color:#aeeebc;max-width:1000px;margin:auto}#assembly{display:block;max-width:1000px;width:100%;margin:20px auto}#banner{max-width:1000px;margin:20px auto;color:#e7c481}
+</style></head><body>
+<h1>Scene Architect — local browser verification</h1><p id="banner">Synthetic test images only. Foundry document and application APIs are mocked.</p>
+<pre id="results">Running…</pre><img id="assembly" alt="Laboratory assembled with synthetic test assets">
+<div id="wizard" class="scene-architect"></div>
+<script src="/node_modules/handlebars/dist/handlebars.js"></script>
+<script type="module" src="/tests/browser-checks.js"></script>
+</body></html>

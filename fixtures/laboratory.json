@@ -1,0 +1,361 @@
+{
+  "version": 2,
+  "scene": {
+    "name": "The Instantiator Laboratory",
+    "columns": 28,
+    "rows": 24,
+    "gridSize": 70,
+    "distance": 5,
+    "units": "ft",
+    "description": "A concealed underground steampunk laboratory carved into dark stone. Three restraint beds face the Instantiator, a copper teleportation apparatus venting purple and green vapour. Side rooms contain machinery, broken constructs and emergency medical beds. A northern access chamber climbs toward a hidden well shaft."
+  },
+  "spaces": [
+    {
+      "id": "experiment",
+      "name": "Experimental chamber",
+      "x": 8,
+      "y": 8,
+      "width": 12,
+      "height": 12,
+      "floor": "stone",
+      "floorAsset": "floor-1-stone"
+    },
+    {
+      "id": "machinery",
+      "name": "Machinery",
+      "x": 2,
+      "y": 8,
+      "width": 6,
+      "height": 6,
+      "floor": "metal",
+      "floorAsset": "floor-2-metal"
+    },
+    {
+      "id": "medical",
+      "name": "Emergency infirmary",
+      "x": 2,
+      "y": 14,
+      "width": 6,
+      "height": 6,
+      "floor": "stone",
+      "floorAsset": "floor-1-stone"
+    },
+    {
+      "id": "constructs",
+      "name": "Broken constructs",
+      "x": 20,
+      "y": 8,
+      "width": 6,
+      "height": 12,
+      "floor": "metal",
+      "floorAsset": "floor-2-metal"
+    },
+    {
+      "id": "access",
+      "name": "Hidden well access",
+      "x": 11,
+      "y": 2,
+      "width": 6,
+      "height": 6,
+      "floor": "stone",
+      "floorAsset": "floor-1-stone"
+    }
+  ],
+  "openings": [
+    {
+      "x": 8,
+      "y": 10,
+      "orientation": "v",
+      "length": 2,
+      "kind": "door"
+    },
+    {
+      "x": 8,
+      "y": 16,
+      "orientation": "v",
+      "length": 2,
+      "kind": "open"
+    },
+    {
+      "x": 20,
+      "y": 10,
+      "orientation": "v",
+      "length": 2,
+      "kind": "door"
+    },
+    {
+      "x": 13,
+      "y": 8,
+      "orientation": "h",
+      "length": 2,
+      "kind": "secret"
+    }
+  ],
+  "features": [
+    {
+      "id": "restraint-1",
+      "type": "bed",
+      "x": 10,
+      "y": 10,
+      "width": 1.5,
+      "height": 3,
+      "description": "Copper restraint bed with leather straps, head at the top",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "experiment",
+      "assetId": "restraint-bed"
+    },
+    {
+      "id": "restraint-2",
+      "type": "bed",
+      "x": 13,
+      "y": 10,
+      "width": 1.5,
+      "height": 3,
+      "description": "Copper restraint bed with leather straps, head at the top",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "experiment",
+      "assetId": "restraint-bed"
+    },
+    {
+      "id": "restraint-3",
+      "type": "bed",
+      "x": 16,
+      "y": 10,
+      "width": 1.5,
+      "height": 3,
+      "description": "Copper restraint bed with leather straps, head at the top",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "experiment",
+      "assetId": "restraint-bed"
+    },
+    {
+      "id": "instantiator",
+      "type": "machine",
+      "x": 12,
+      "y": 15,
+      "width": 4,
+      "height": 3,
+      "description": "The Instantiator: a copper teleportation ring with coils and an empty central platform",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "experiment",
+      "assetId": "instantiator"
+    },
+    {
+      "id": "engine",
+      "type": "machine",
+      "x": 3,
+      "y": 9,
+      "width": 3,
+      "height": 3,
+      "description": "Brass steam generator with gauges and flywheel",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "machinery",
+      "assetId": "steam-engine"
+    },
+    {
+      "id": "medical-1",
+      "type": "bed",
+      "x": 3,
+      "y": 15,
+      "width": 1.5,
+      "height": 3,
+      "description": "Emergency medical bed, cream linen and copper frame",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "medical",
+      "assetId": "medical-bed"
+    },
+    {
+      "id": "medical-2",
+      "type": "bed",
+      "x": 5,
+      "y": 15,
+      "width": 1.5,
+      "height": 3,
+      "description": "Emergency medical bed, cream linen and copper frame",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "medical",
+      "assetId": "medical-bed"
+    },
+    {
+      "id": "construct-1",
+      "type": "other",
+      "x": 22,
+      "y": 13,
+      "width": 2,
+      "height": 2,
+      "description": "Broken clockwork construct, isolated pile of metal limbs",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "constructs",
+      "assetId": "broken-construct"
+    },
+    {
+      "id": "construct-2",
+      "type": "other",
+      "x": 23,
+      "y": 17,
+      "width": 2,
+      "height": 2,
+      "rotation": 90,
+      "description": "Broken clockwork construct, isolated pile of metal limbs",
+      "layer": "prop",
+      "roomId": "constructs",
+      "assetId": "broken-construct"
+    },
+    {
+      "id": "well-stairs",
+      "type": "stairs",
+      "x": 13,
+      "y": 3,
+      "width": 2,
+      "height": 3,
+      "description": "Stone stairs ascending north toward a concealed well shaft",
+      "rotation": 0,
+      "layer": "prop",
+      "roomId": "access",
+      "assetId": "well-stairs"
+    },
+    {
+      "id": "vapour",
+      "type": "other",
+      "x": 11.5,
+      "y": 14.5,
+      "width": 5,
+      "height": 4,
+      "layer": "decal",
+      "description": "Subtle translucent purple and green vapour wisps, transparent background",
+      "rotation": 0,
+      "roomId": "experiment",
+      "assetId": "vapour"
+    }
+  ],
+  "lights": [
+    {
+      "name": "Instantiator glow",
+      "x": 14,
+      "y": 16.5,
+      "dim": 20,
+      "bright": 5,
+      "color": "#954aff",
+      "alpha": 0.25
+    },
+    {
+      "name": "Copper lamp",
+      "x": 10,
+      "y": 18,
+      "dim": 20,
+      "bright": 10,
+      "color": "#ffb45b",
+      "alpha": 0.3
+    },
+    {
+      "name": "Medical lamp",
+      "x": 4,
+      "y": 18,
+      "dim": 15,
+      "bright": 5,
+      "color": "#aeeec0",
+      "alpha": 0.25
+    }
+  ],
+  "barriers": [],
+  "art": {
+    "version": 1,
+    "direction": "Orthographic overhead, painterly dark stone and aged copper, restrained purple and green accents. Soft neutral illumination from upper left; no dramatic cast shadows, perspective, text, borders or grid.",
+    "assets": [
+      {
+        "id": "surround-rock",
+        "kind": "material",
+        "description": "Dark surrounding rock",
+        "ratio": 1,
+        "requirements": "Seamless square texture, no objects or directional shadows."
+      },
+      {
+        "id": "wall-stone",
+        "kind": "material",
+        "description": "Rough cut stone wall surface",
+        "ratio": 1,
+        "requirements": "Seamless square texture, no objects or directional shadows."
+      },
+      {
+        "id": "floor-1-stone",
+        "kind": "material",
+        "description": "stone floor material",
+        "ratio": 1,
+        "requirements": "Seamless square texture, no objects or directional shadows."
+      },
+      {
+        "id": "floor-2-metal",
+        "kind": "material",
+        "description": "metal floor material",
+        "ratio": 1,
+        "requirements": "Seamless square texture, no objects or directional shadows."
+      },
+      {
+        "id": "restraint-bed",
+        "kind": "prop",
+        "description": "Copper restraint bed with leather straps, head at the top",
+        "ratio": 0.5,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "instantiator",
+        "kind": "prop",
+        "description": "The Instantiator: a copper teleportation ring with coils and an empty central platform",
+        "ratio": 1.3333333333333333,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "steam-engine",
+        "kind": "prop",
+        "description": "Brass steam generator with gauges and flywheel",
+        "ratio": 1,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "medical-bed",
+        "kind": "prop",
+        "description": "Emergency medical bed, cream linen and copper frame",
+        "ratio": 0.5,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "broken-construct",
+        "kind": "prop",
+        "description": "Broken clockwork construct, isolated pile of metal limbs",
+        "ratio": 1,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "well-stairs",
+        "kind": "prop",
+        "description": "Stone stairs ascending north toward a concealed well shaft",
+        "ratio": 0.6666666666666666,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      },
+      {
+        "id": "vapour",
+        "kind": "prop",
+        "description": "Subtle translucent purple and green vapour wisps, transparent background",
+        "ratio": 1.25,
+        "requirements": "One isolated object, tightly framed, transparent PNG, no ground plane."
+      }
+    ],
+    "surroundAsset": "surround-rock",
+    "wallAsset": "wall-stone",
+    "assignments": {},
+    "settings": {
+      "materialScale": 2,
+      "wallWidth": 0.16,
+      "shadows": true,
+      "allowPlaceholders": false
+    }
+  }
+}

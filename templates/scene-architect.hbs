@@ -1,80 +1,80 @@
 <div class="sa-shell">
   <section class="sa-section">
-    <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Scene brief</h2>
-    <div class="sa-grid sa-grid-4">
-      <label>Scene name
-        <input type="text" name="sceneName" value="{{sceneName}}" placeholder="Overton's Laboratory">
-      </label>
-      <label>Columns
-        <input type="number" name="columns" min="4" max="200" step="1" value="{{columns}}">
-      </label>
-      <label>Rows
-        <input type="number" name="rows" min="4" max="200" step="1" value="{{rows}}">
-      </label>
-      <label>Grid px
-        <input type="number" name="gridSize" min="50" max="400" step="1" value="{{gridSize}}">
-      </label>
+    <h2>Scene Architect</h2>
+    <div class="sa-actions sa-wrap">
+      <select name="projectId" aria-label="Saved Scene Architect scene"><option value="">Choose saved scene…</option>{{#each projects}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</select>
+      <button type="button" data-action="reopen">Reopen</button>
+      <button type="button" data-action="newProject">New project</button>
+      <button type="button" data-action="loadExample">Load laboratory example</button>
     </div>
-    <label>Describe the map
-      <textarea name="brief" rows="8" placeholder="Underground steampunk laboratory. Large central experiment chamber...">{{brief}}</textarea>
-    </label>
-    <div class="sa-actions">
-      <button type="button" data-action="copyLayoutPrompt"><i class="fa-regular fa-copy"></i> Copy layout request</button>
-      <button type="button" data-action="pastePlan"><i class="fa-solid fa-paste"></i> Paste layout JSON</button>
-    </div>
-    <p class="hint">Paste the copied request into a frontier web model. It should return a strict grid-layout JSON document. Paste that JSON back here.</p>
+    {{#if sceneReady}}<p class="sa-status good">Working scene: <strong>{{sceneNameLinked}}</strong>. Assignments save to this scene.</p>{{/if}}
+    {{#if conflict}}<div class="sa-status warning"><strong>Geometry conflict:</strong> {{conflict}}<p>The saved plan controls floors and placement. Rendering and guide export are blocked. Undo native edits to match the plan, or download/edit the JSON and build a new scene. Existing native walls are never replaced.</p></div>{{/if}}
   </section>
-
   <section class="sa-section">
-    <h2><i class="fa-solid fa-ruler-combined"></i> Deterministic plan</h2>
+    <details {{#unless hasPlan}}open{{/unless}}>
+      <summary>1. Describe and plan the map</summary>
+      <div class="sa-grid sa-grid-4">
+        <label>Scene name<input name="sceneName" value="{{sceneName}}"></label>
+        <label>Columns<input type="number" name="columns" min="4" max="200" value="{{columns}}"></label>
+        <label>Rows<input type="number" name="rows" min="4" max="200" value="{{rows}}"></label>
+        <label>Grid px<input type="number" name="gridSize" min="50" max="400" value="{{gridSize}}"></label>
+      </div>
+      <label>Describe the map<textarea name="brief" rows="5">{{brief}}</textarea></label>
+      <p class="hint">These fields create the layout request. Import the returned JSON to define geometry.</p>
+      <div class="sa-actions"><button type="button" data-action="copyLayoutPrompt">Copy layout request</button><button type="button" data-action="pastePlan">Import / edit plan JSON</button></div>
+    </details>
     {{#if hasPlan}}
-      <div class="sa-status good"><i class="fa-solid fa-circle-check"></i> {{planSummary}}</div>
-      <details>
-        <summary>Show imported JSON</summary>
-        <pre>{{planJson}}</pre>
-      </details>
-      <div class="sa-actions">
-        <button type="button" data-action="buildDraft" class="sa-primary"><i class="fa-solid fa-dungeon"></i> Build draft scene</button>
+      <p class="sa-status good">{{planSummary}}</p>
+      {{#each warnings}}<p class="sa-status warning">{{this}}</p>{{/each}}
+      <div class="sa-actions sa-wrap">
+        <button type="button" data-action="buildDraft">{{#if sceneReady}}Build a new scene from plan{{else}}Build draft scene{{/if}}</button>
+        <button type="button" data-action="downloadPlan">Download complete plan + art manifest</button>
+        {{#if sceneReady}}<button type="button" data-action="viewScene">View scene</button><button type="button" data-action="exportGuide">Export SVG guide</button>{{/if}}
       </div>
-    {{else}}
-      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> No layout JSON imported yet.</div>
+      <details><summary>Inspect saved geometry and art data</summary><pre>{{planJson}}</pre></details>
     {{/if}}
   </section>
-
+  {{#if hasPlan}}
   <section class="sa-section">
-    <h2><i class="fa-solid fa-flask"></i> Experimental artwork handoff</h2>
-    {{#if sceneReady}}
-      <div class="sa-status good"><i class="fa-solid fa-link"></i> Working scene: <strong>{{sceneNameLinked}}</strong></div>
-      <div class="sa-status warning">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        General-purpose image generators do not reliably preserve exact wall or grid geometry. This optional workflow may produce an unusable background.
+    <h2>2. Request your scene’s art kit</h2>
+    <p>{{art.direction}}</p>
+    <p class="hint">Copy the request into ChatGPT. Generate and download separate images, then match each file to its named slot below. Several images may require several downloads. Repeated props share one image.</p>
+    <div class="sa-actions"><button type="button" data-action="copyRequests">Copy artwork requests</button><button type="button" data-action="editArt">Edit art descriptions / reuse slots</button></div>
+  </section>
+  <section class="sa-section">
+    <h2>3. Import and fit artwork</h2>
+    {{#unless sceneReady}}<p class="sa-status warning">Build a draft scene to save assignments and upload images.</p>{{/unless}}
+    <p class="hint">PNG, JPEG or WebP, up to 30 MB / 40 megapixels. Transparency is preserved; opaque backgrounds stay visible. Crop uses percentages of the original image. Contain preserves the whole crop; Cover fills the footprint and clips excess. Neither stretches it.</p>
+    {{#each assets}}
+    <details class="sa-asset" data-asset-id="{{id}}">
+      <summary><strong>{{id}}</strong> · {{kind}} · {{#if assigned}}assigned{{else}}needs image{{/if}}{{#if instances}} · {{instances}} instances{{/if}}</summary>
+      <p>{{description}}</p><p class="hint">{{requirements}} Intended width:height {{ratio}}:1.</p>
+      {{#if src}}<img class="sa-source-preview" src="{{src}}" alt="Original image for {{id}}"><p class="sa-path">{{src}}</p>{{/if}}
+      {{#if opaque}}<p class="sa-status warning">No transparency detected. Any background in this image remains visible.</p>{{/if}}
+      <label>Image file<input type="file" name="assetFile" accept="image/png,image/jpeg,image/webp"></label>
+      <div class="sa-grid sa-grid-crop">
+        <label>Fit<select name="fit"><option value="contain" {{#unless isCover}}selected{{/unless}}>Contain</option><option value="cover" {{#if isCover}}selected{{/if}}>Cover (clip)</option></select></label>
+        <label>Left %<input type="number" name="cropX" min="0" max="99.9" step="0.1" value="{{cropX}}"></label>
+        <label>Top %<input type="number" name="cropY" min="0" max="99.9" step="0.1" value="{{cropY}}"></label>
+        <label>Width %<input type="number" name="cropW" min="0.1" max="100" step="0.1" value="{{cropW}}"></label>
+        <label>Height %<input type="number" name="cropH" min="0.1" max="100" step="0.1" value="{{cropH}}"></label>
       </div>
-      <ol class="sa-steps">
-        <li>Review the scene and adjust its native walls or doors. The image guide uses the live geometry.</li>
-        <li>
-          <button type="button" data-action="downloadImageGuide"><i class="fa-solid fa-image"></i> Download experimental PNG guide + prompt</button>
-        </li>
-        <li>Upload the PNG directly to ChatGPT or another image model, paste the copied prompt, and ask it to generate the image.</li>
-        <li>
-          Download the finished PNG, JPEG or WebP, then
-          <button type="button" data-action="importArtwork"><i class="fa-solid fa-image"></i> Import as unmanaged background</button>
-        </li>
-      </ol>
-      <details>
-        <summary>Advanced: download source files separately</summary>
-        <div class="sa-actions sa-wrap">
-          <button type="button" data-action="viewScene"><i class="fa-solid fa-eye"></i> View scene</button>
-          <button type="button" data-action="exportGuide"><i class="fa-solid fa-file-export"></i> Export SVG guide</button>
-          <button type="button" data-action="copyArtPrompt"><i class="fa-regular fa-copy"></i> Copy art prompt</button>
-          <button type="button" data-action="downloadPlan"><i class="fa-solid fa-download"></i> Download plan JSON</button>
-        </div>
-      </details>
-    {{else}}
-      <div class="sa-status"><i class="fa-solid fa-circle-info"></i> Build a draft scene before exporting optional artwork references.</div>
-    {{/if}}
+      <div class="sa-fit-preview" aria-live="polite"></div>
+      <div class="sa-actions"><button type="button" data-action="previewAsset">Preview crop / fit</button><button type="button" data-action="saveAsset">Upload / save this slot</button></div>
+      <p class="hint">Preview does not upload. Save this slot before closing it or using other project actions; unsaved file selections and crop edits are temporary.</p>
+    </details>
+    {{/each}}
   </section>
-
-  <section class="sa-section sa-footer-note">
-    <strong>Deterministic scope:</strong> Scene Architect guarantees the grid, walls, doors, windows and lights it creates. It does not guarantee externally generated artwork.
+  <section class="sa-section">
+    <h2>4. Assemble exact artwork</h2>
+    <div class="sa-grid sa-grid-4">
+      <label>Material repeat (cells)<input type="number" name="materialScale" min="0.25" max="20" step="0.25" value="{{art.settings.materialScale}}"></label>
+      <label>Wall width (cells)<input type="number" name="wallWidth" min="0.05" max="0.4" step="0.01" value="{{art.settings.wallWidth}}"></label>
+    </div>
+    <label class="sa-check"><input type="checkbox" name="shadows" {{#if art.settings.shadows}}checked{{/if}}> Soft contact shadows on props</label>
+    <label class="sa-check"><input type="checkbox" name="allowPlaceholders" {{#if art.settings.allowPlaceholders}}checked{{/if}}> Allow labelled synthetic placeholders for missing images (testing)</label>
+    <div class="sa-actions sa-wrap"><button type="button" data-action="saveSettings">Save settings</button>{{#if sceneReady}}<button type="button" data-action="previewScene">Preview assembled scene</button><button type="button" data-action="renderArt" class="sa-primary">Render to Foundry</button>{{/if}}</div>
+    <p class="hint">Save settings before previewing. Floors and textured boundaries become a grid-free background. Props become editable Tiles; re-rendering replaces generated Tiles from the plan. Door, secret door and window spans remain visually clear; use native Foundry door controls. Door-leaf art and animated vapour are not included in this milestone.</p>
   </section>
+  {{/if}}
 </div>

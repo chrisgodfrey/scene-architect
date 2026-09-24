@@ -21,3 +21,14 @@
 .scene-architect pre { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: .8em; background: rgba(0,0,0,.25); padding: 8px; border-radius: 5px; }
 .scene-architect .sa-footer-note { font-size: .9em; opacity: .9; }
 .scene-architect-launch { width: 100%; margin-top: 6px; }
+.scene-architect .window-content { overflow-y: auto; }
+.scene-architect .sa-asset { padding: 10px; border: 1px solid #6666; border-radius: 6px; }
+.scene-architect .sa-asset summary { cursor: pointer; overflow-wrap: anywhere; }
+.scene-architect .sa-grid-crop { grid-template-columns: 1.8fr repeat(4, 1fr); margin-top: 10px; }
+.scene-architect .sa-source-preview { max-width: 260px; max-height: 180px; object-fit: contain; }
+.scene-architect .sa-source-preview, .scene-architect .sa-fit-preview canvas { background: repeating-conic-gradient(#888 0% 25%, #555 0% 50%) 50% / 16px 16px; }
+.scene-architect .sa-fit-preview canvas { max-width: 100%; }
+.scene-architect .sa-path { font-size: .8em; overflow-wrap: anywhere; }
+.scene-architect .sa-check { flex-direction: row; align-items: center; margin: 8px 0; }
+.scene-architect .sa-check input { width: auto; }
+.scene-architect [aria-busy="true"] button, .scene-architect[aria-busy="true"] button { opacity: .5; pointer-events: none; }
