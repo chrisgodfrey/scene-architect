@@ -1,8 +1,9 @@
 # Scene Architect — scene art kits
 
-Local development version **0.2.0-alpha.1**, targeting **Foundry VTT 14.365**.
-This version is not published; its manifest download URL is reserved for a future
-release. No AI API or external asset library is required.
+Source version **0.2.0-alpha.2**, targeting **Foundry VTT 14.365**.
+Foundry's updater needs a published release ZIP at the manifest's download URL;
+pushing this source code alone does not create it. No AI API or external asset
+library is required.
 
 **Description → structured plan → exact geometry → scene-specific art kit → deterministic assembly → playable Foundry scene.**
 
@@ -12,15 +13,39 @@ needs to trace a floor plan or arrange a precise sprite sheet.
 
 ## Update your existing alpha.8 installation
 
-These changes exist only in the local checkout. Pulling from GitHub or using Foundry's
-module updater will not install them until a release is published.
+There are two installation paths: upload the module files manually, or publish the
+release ZIP so Foundry's updater can download it.
+
+### Foundry updater: resolve a release ZIP “Not Found” error
+
+The manifest points to the release asset named `scene-architect.zip` under tag
+`v0.2.0-alpha.2`. A source push updates the manifest but does not create that release
+asset. If it is missing, Foundry reports “Not Found” and cannot install the update.
+
+From the repository root, build and verify the archive:
+
+```powershell
+powershell -NoProfile -File tools/package-module.ps1
+```
+
+Then create a GitHub release tagged **v0.2.0-alpha.2** from the commit containing this
+version. Attach **dist/scene-architect.zip** and **dist/module.json**, and publish the
+release (a draft is not publicly downloadable). The ZIP's filename and tag must match
+the manifest exactly. GitHub's automatic “Source code” downloads do not replace this
+asset. Packaging locally does not publish anything.
+
+Once that asset is available, retry the module update in Foundry and hard-refresh your
+browser. Confirm the installed version is **0.2.0-alpha.2**. For future versions, prepare
+the archive and its release asset before exposing a manifest that points to them.
+
+### Manual installation without a GitHub release
 
 1. Stop Foundry on the VM.
 2. Copy this checkout's `module.json`, complete `scripts/`, `styles/`, `templates/`
    and `fixtures/` into the existing `Data/modules/scene-architect/` directory,
    replacing the matching files. Include **all** scripts and the new fixtures directory.
 3. Start Foundry and hard-refresh your browser to load the new JavaScript and template.
-4. Confirm the installed module version is **0.2.0-alpha.1**. Keep Scene Architect
+4. Confirm the installed module version is **0.2.0-alpha.2**. Keep Scene Architect
    enabled in your world. Existing scene data and uploaded artwork live in world data;
    replacing the module files does not migrate or render those scenes automatically.
 
@@ -46,9 +71,11 @@ spending time generating the art kit. Placeholder appearance is intentionally ba
 1. As GM, open **Scenes → Scene Architect**.
 2. Choose **Load laboratory example**, then **Build draft scene**. Alternatively,
    describe a map, copy its layout request to ChatGPT, and import the returned JSON.
-3. Choose **Copy artwork requests**. Generate each named material or isolated object
-   separately and download the images. Several images may require several generations
-   and downloads. Requests include only used slots, proportions and shared art direction.
+3. Choose **Copy artwork requests**. The prompt requests the complete kit sequentially,
+   with one separate image per used slot and no confirmation between assets. Download
+   the images individually. Generation limits may still interrupt completion; the prompt
+   asks the model to identify completed and remaining slots so you can resume. Requests
+   include intended proportions and shared art direction.
 4. Expand a slot, choose PNG, JPEG or WebP, adjust crop percentages and **Preview crop / fit**.
    **Contain** shows the entire crop with transparent space around it; **Cover** fills
    the footprint and clips excess. Both preserve aspect ratio. Use Cover for material
