@@ -10,6 +10,11 @@ reference, and imports your finished map as a single background. Machinery,
 pipes and scenery can flow across grid boundaries. It does not assemble separate
 prop images or repeated texture tiles in the current wizard.
 
+New layout plans can describe lights by purpose, such as a magic portal, flame,
+flickering lamp, steady lamp or ambient fill. Scene Architect links non-ambient
+lights to visible features, applies bounded defaults, and validates animation
+effects against the installed Foundry runtime before creating a scene.
+
 **Alignment is a starting point, not a guarantee.** An image generator can move or
 redraw architecture despite the reference. You can now ask ChatGPT to analyse the
 finished image and import its proposed geometry through an optional review step.
@@ -18,17 +23,33 @@ any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.4** adds optional image-analysis geometry import and wall restoration
-to the complete-map workflow. Update Scene Architect in
-Foundry's Add-on Modules screen, then hard-refresh your browser. Confirm the
-installed version is **0.2.0-alpha.4**. The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.4)
-also provides the module ZIP for manual installation.
+**0.2.0-alpha.5** makes the complete-map workflow easier to follow, adds
+purposeful semantic lights, supports same-chat geometry analysis without
+reattaching an unchanged map, and adds a guided correction loop when returned
+plan JSON fails validation.
+
+### Install or update in Foundry
+
+1. Publish or update the module from Foundry's **Add-on Modules** screen.
+2. For a first installation, choose **Install Module** and paste this manifest URL:
+
+   ```text
+   https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json
+   ```
+
+3. Restart Foundry if it is running, then hard-refresh the browser.
+4. Open **Add-on Modules** and confirm Scene Architect reports
+   **0.2.0-alpha.5**.
+
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.5)
+also provides `scene-architect.zip` for manual installation. Existing world
+scenes and uploaded artwork are preserved when updating.
 
 For a manual server refresh, stop Foundry and replace the files in
 `Data/modules/scene-architect/` with `module.json`, `README.md`, and the complete
 `scripts/`, `styles/`, `templates/` and `fixtures/` directories from this checkout.
 Restart Foundry, hard-refresh your browser and check the module version.
-Existing world scenes and artwork are preserved. There is no runtime build step.
+There is no runtime build step.
 
 Alternatively, create the verified module archive:
 
@@ -39,7 +60,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.4` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.5` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -48,9 +69,13 @@ an unpublished release. Prepare the release assets before exposing that manifest
 
 1. As GM, open **Scenes → Scene Architect**. Load the laboratory example, or enter
    a brief, **Copy layout request**, send it to ChatGPT and **Import / edit plan JSON**
-   with the returned layout.
-2. **Build draft scene**. This creates the scene, native walls, doors and lights,
-   and a schematic reference background. It does not create prop Tiles.
+   with the returned layout. If validation rejects the plan, use **Copy correction
+   request** in the same ChatGPT conversation, then **Import corrected plan JSON**.
+   Scene Architect retains the rejected JSON and exact error while the wizard stays
+   open, and validates every corrected response again.
+2. **Build draft scene**. This validates every wall and light first, then creates
+   the scene, native walls, doors, purposeful lights and schematic reference
+   background. It does not create prop Tiles.
 3. **Export PNG reference** and **Copy map prompt**. Attach the PNG in ChatGPT with
    that prompt. Generate and download **one complete map image**.
 4. Choose that image under **Import and align the map**, then **Preview alignment**.
@@ -59,34 +84,64 @@ an unpublished release. Prepare the release assets before exposing that manifest
 5. If necessary, change **Scale (%)**, **Horizontal offset** or **Vertical offset**,
    then preview again. **Apply map background** saves the source and alignment and
    replaces the background. The coloured overlay is never baked into the map.
-6. Optionally use **Fit geometry to the finished artwork** as described below.
-   Or go directly to **View scene** and use Foundry's wall controls to move endpoints, reposition doors,
-   and add or remove wall segments where the illustration differs. Adjust lights
-   and test movement and vision with a player token.
-7. Reopen the wizard to reuse the saved original image or import a replacement.
+6. Optionally use **Fit geometry to the finished artwork**. Start with **Copy
+   same-chat geometry prompt** if you are still in the conversation that generated
+   the unchanged map. Otherwise use the fitted-image fallback described below.
+   You can also go directly to **View scene** and use Foundry's wall controls.
+7. In Foundry, set scene darkness high enough to see the lights. Check their
+   positions and effects, wall occlusion, doors, movement and token vision.
+8. Reopen the wizard to reuse the saved original image or import a replacement.
    Applying again preserves all current native walls, doors, lights and Tiles.
 
 Settings and file selections save when you apply. Leaving the file input empty
 reuses the saved source. The module always fits from the original image, avoiding
 repeated resampling of an already fitted background.
 
+## If ChatGPT returns an invalid plan
+
+Scene Architect validates imported plan JSON before it creates anything. If the
+plan has overlapping props, invalid room geometry, blocked openings, missing
+light links or another structural problem:
+
+1. Read the persistent **Plan not accepted** message. It contains the exact first
+   validation error; your rejected JSON is retained while the wizard stays open.
+2. Select **Copy correction request**.
+3. Return to the same ChatGPT conversation and paste the request. It includes the
+   original rules, the exact error and the complete rejected plan, and asks for
+   one corrected full JSON object without redesigning valid content.
+4. Copy ChatGPT's complete corrected JSON.
+5. Back in Scene Architect, select **Import corrected plan JSON**. The dialog is
+   prefilled with the rejected candidate so you can also edit it manually.
+6. Repeat the correction loop if another validation error appears. When the plan
+   passes, the wizard returns to **Build draft scene**.
+
+Scene Architect does not silently move, shrink or delete props because several
+different fixes may be valid. It automates the feedback request and validates
+every retry. To start over instead, use **Copy fresh layout request instead**.
+
 ## Optional: analyse the finished map and import geometry
 
 1. **Apply map background** first, including any overall scale or position changes.
-2. In step 4, **Export analysis image** and **Copy analysis prompt**. Attach that
-   exported PNG to ChatGPT with the prompt in a follow-up after generating the art.
-   It is your fitted background without wall overlays. Do not attach a screenshot
-   with coloured lines or substitute the original, differently sized image.
-3. Ask ChatGPT to return the geometry JSON. Paste it into **Geometry JSON**, or
+2. If the unchanged downloaded image came from the current ChatGPT conversation,
+   select **Copy same-chat geometry prompt** and send it in that conversation.
+   Scene Architect requests coordinates against the earlier source image, then
+   applies the saved scale and offsets locally. You do not attach the image again.
+3. The same-chat path is a convenience, not a guaranteed OpenAI capability. Use
+   the **Fallback: attach the exact fitted image** workflow when you edited the
+   image, changed conversations, imported an external map, or ChatGPT cannot inspect
+   its earlier output. Select **Export fitted analysis image**, attach that file,
+   then select **Copy fitted-image analysis prompt**. Do not attach a screenshot
+   with coloured overlays.
+4. Ask ChatGPT to return the geometry JSON. Paste it into **Geometry JSON**, or
    choose a JSON file, then **Import geometry for review**. A selected file takes
    priority over pasted text. This saves the proposal and previews it; no walls change.
-4. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
+5. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
    using the overlay selector and **Preview geometry**. Proposed walls are mint,
    doors pink and uncertain/plan-informed segments dashed orange. Dashed open
    passages are review guides and create no blocking walls.
-5. Inspect the listed review notes and orange markers. Acknowledge review if any
+6. Inspect the listed review notes and orange markers. Acknowledge review if any
    segments are flagged, then **Apply proposed geometry** and confirm replacement.
-6. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
+7. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
    **Restore previous walls** returns to the snapshot taken before the last geometry
    operation; the current walls then become the next restore snapshot.
 
@@ -104,9 +159,11 @@ export the scene in Foundry if you need a longer history. A durable backup is sa
 before applying. Partial failures attempt to remove staged walls and restore any
 deleted originals; failed recovery leaves the snapshot available for restoration.
 
-Analysis coordinates are normalized to the full exported image and rounded only
-to scene pixels, never to grid squares. Diagonal segments are supported. The prompt
-includes an image identifier and dimensions which the returned JSON must preserve.
+Analysis coordinates are normalized either to the unchanged generated source or
+to the fitted fallback image. Source coordinates are transformed and clipped to
+the visible scene locally. Fitted coordinates are rounded only to scene pixels,
+never to grid squares. Diagonal segments are supported. The prompt includes an
+image or generation identifier and dimensions which the returned JSON must preserve.
 Changing the background path or scene dimensions invalidates the analysis. Unsaved
 image/alignment changes must be applied first. Editing native walls after preview
 requires another preview before applying. Do not modify the background file in place:
@@ -118,10 +175,34 @@ passages. Unknown document fields are discarded. Limits: 1 MB of JSON and 2000
 segments. These checks do not prove visual accuracy, connected rooms or leak-free
 vision. Secret doors and plan-informed geometry are always marked for review.
 
-This adds one manual image-and-text exchange with ChatGPT. There is no API service
-or automatic model call. The earlier laboratory proof was a successful qualitative
-check on one mostly rectangular image, not a reliability benchmark. Its experimental
-JSON lacks the production image identifier: request new JSON using this workflow.
+There is no API service or automatic model call. The same-chat path adds one text
+exchange. The fallback adds one image-and-text exchange. The earlier laboratory
+proof was a successful qualitative check on one mostly rectangular image, not a
+reliability benchmark. Its experimental JSON lacks the production identifier:
+request new JSON using this workflow.
+
+## Purposeful lights
+
+New semantic lights use one of six presets: `steady-lamp`,
+`flickering-lamp`, `flame`, `magic-portal`, `pulsing-magic` or
+`ambient-fill`. A non-ambient light must reference a visible feature, so its
+native AmbientLight document is centred on the lamp, flame or portal that the map
+prompt asks ChatGPT to draw. Ambient fill instead references a room and an explicit
+point inside it.
+
+Presets provide a complete starting configuration. For example, a magic portal
+uses Foundry's `rainbowswirl` effect and an unreliable lamp uses `flicker` when
+those animation keys are installed. Plans can supply bounded overrides for radius,
+angle, colour, alpha, attenuation, luminosity, saturation, contrast, shadows,
+animation speed, intensity and direction. Existing coordinate-based lights remain
+supported. An unavailable requested effect stops draft creation before Scene,
+Wall or AmbientLight documents are written instead of creating an inert light.
+
+These lights are starting points, not visual acceptance. Map generation can move
+the painted source, and every Foundry theme or world may display an effect
+differently. Set scene darkness high enough to inspect the result, then verify
+source placement, animation, wall occlusion and token vision. Applying analysed
+geometry never replaces or moves light documents.
 
 ## Quick server test
 
@@ -231,8 +312,9 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for this change: **37 core tests and 48 browser assertions**
-passed. Coverage includes full-map import, exact output dimensions, live edited
+Local verification for this release: **45 unit tests and 72 browser assertions**
+passed. Coverage includes plan-validation correction and retry, full-map import,
+exact output dimensions, live edited
 wall overlays, omission of overlays from the uploaded background, offsets,
 saved-source reuse, preservation of native edits and Tiles, cancelled application,
 upload failure and background rollback. Retained legacy renderer checks also run.

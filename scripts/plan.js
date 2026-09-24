@@ -1,5 +1,7 @@
 import { compileGeometry, edgeKey } from "./geometry.js";
 
+export const LIGHT_PRESETS = new Set(['steady-lamp','flickering-lamp','flame','magic-portal','pulsing-magic','ambient-fill']);
+
 function normalizePlan(raw, fallback={}) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw)) throw new Error('Plan must be a JSON object.');
   for(const name of ['spaces','openings','features','lights','barriers']) if(raw[name]!=null&&!Array.isArray(raw[name])) throw new Error(`${name} must be an array.`);
@@ -17,6 +19,12 @@ function normalizePlan(raw, fallback={}) {
   p.openings = Array.isArray(p.openings) ? p.openings : [];
   p.features = Array.isArray(p.features) ? p.features : [];
   p.lights = Array.isArray(p.lights) ? p.lights : [];
+  for(const light of p.lights) {
+    if(typeof light.animation==='string')light.animation={type:light.animation,speed:2,intensity:2,reverse:false};
+    else if(light.animation&&typeof light.animation==='object'&&!Array.isArray(light.animation)) {
+      light.animation.speed??=2;light.animation.intensity??=2;light.animation.reverse??=false;
+    }
+  }
   p.barriers = Array.isArray(p.barriers) ? p.barriers : [];
   return p;
 }
@@ -154,11 +162,36 @@ export function validatePlan(plan) {
     if(f.layer==='prop'&&other.layer==='prop'&&polygonsOverlap(featureCorners(f),featureCorners(other))) throw new Error(`Props ${f.id} and ${other.id} overlap.`);
   }
   for(const [i,l] of plan.lights.entries()) {
-    finite(l.x,`lights[${i}].x`,0,columns); finite(l.y,`lights[${i}].y`,0,rows);
-    finite(l.dim ?? 6,`lights[${i}].dim`); finite(l.bright ?? 3,`lights[${i}].bright`);
+    if(typeof l.animation==='string')l.animation={type:l.animation,speed:2,intensity:2,reverse:false};
+    const label=`lights[${i}]`,semantic=l.preset!=null;
+    if(semantic) {
+      if(typeof l.preset!=='string'||!LIGHT_PRESETS.has(l.preset))throw new Error(`${label}.preset is invalid.`);
+      if(l.preset==='ambient-fill') {
+        if(typeof l.roomId!=='string')throw new Error(`${label}.roomId is required for ambient-fill.`);
+        const room=plan.spaces.find(r=>r.id===l.roomId);
+        if(!room)throw new Error(`${label}.roomId must reference an existing room.`);
+        finite(l.x,`${label}.x`,room.x,room.x+room.width);finite(l.y,`${label}.y`,room.y,room.y+room.height);
+      } else {
+        if(typeof l.sourceFeatureId!=='string')throw new Error(`${label}.sourceFeatureId is required for ${l.preset}.`);
+        const feature=plan.features.find(f=>f.id===l.sourceFeatureId);
+        if(!feature)throw new Error(`${label}.sourceFeatureId must reference an existing feature.`);
+        l.x=feature.x+feature.width/2;l.y=feature.y+feature.height/2;
+      }
+    } else {
+      finite(l.x,`${label}.x`,0,columns);finite(l.y,`${label}.y`,0,rows);
+    }
+    const radiusLimit=Math.hypot(columns,rows);
+    finite(l.dim ?? 6,`${label}.dim`,0,radiusLimit);finite(l.bright ?? 3,`${label}.bright`,0,radiusLimit);
     if(l.color && !/^#[0-9a-f]{6}$/i.test(l.color)) throw new Error(`lights[${i}].color must be a hex colour.`);
-    for(const k of ['alpha','attenuation','shadows']) if(l[k]!=null) finite(l[k],`lights[${i}].${k}`,0,1);
-    if(l.angle!=null) finite(l.angle,`lights[${i}].angle`,0,360);
+    for(const k of ['alpha','attenuation','shadows'])if(l[k]!=null)finite(l[k],`${label}.${k}`,0,1);
+    for(const k of ['luminosity','saturation','contrast'])if(l[k]!=null)finite(l[k],`${label}.${k}`,-1,1);
+    if(l.angle!=null)finite(l.angle,`${label}.angle`,0,360);
+    if(l.animation!=null) {
+      if(!l.animation||typeof l.animation!=='object'||Array.isArray(l.animation))throw new Error(`${label}.animation must be an object.`);
+      if(typeof l.animation.type!=='string'||l.animation.type.length>80)throw new Error(`${label}.animation.type must be an installed animation key.`);
+      finite(l.animation.speed,`${label}.animation.speed`,0,10);finite(l.animation.intensity,`${label}.animation.intensity`,0,10);
+      if(typeof l.animation.reverse!=='boolean')throw new Error(`${label}.animation.reverse must be true or false.`);
+    }
   }
   return plan;
 }
@@ -181,4 +214,3 @@ export function planWarnings(plan) {
 }
 
 export { normalizePlan };
-

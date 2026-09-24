@@ -1,4 +1,5 @@
 import { makeCanvas } from './renderer.js';
+import { lightIntentFromPlan } from './foundry-data.js';
 
 export function mapSize(scene) {
   const {width,height}=scene;
@@ -57,10 +58,15 @@ export function renderGuide(plan,scene) {
     ctx.restore();ctx.fillStyle='#202329';ctx.fillRect(x-12,y-11,24,22);
     ctx.fillStyle='#ffffff';ctx.fillText(String(i+1),x,y);
   }
+  for(const light of plan.lights) {
+    ctx.beginPath();ctx.arc(light.x*g,light.y*g,Math.max(7,g*.12),0,Math.PI*2);
+    ctx.fillStyle=light.color??'#ffb45b';ctx.fill();
+    ctx.strokeStyle='#ffffff';ctx.setLineDash([]);ctx.lineWidth=2;ctx.stroke();
+  }
   return drawWallOverlay(c,scene);
 }
 
-export function wholeMapPrompt(plan,scene) {
+export function wholeMapPrompt(plan,scene,{generationId}={}) {
   const {width,height}=mapSize(scene);
   return `Create ONE complete, coherently illustrated top-down battlemap using the attached Scene Architect PNG reference. Return one full-map image, not an asset pack or separate props.
 
@@ -77,6 +83,11 @@ ${plan.spaces.map(r=>`${r.name||r.id}: ${r.description||r.floor||''}`).join('\n'
 
 NUMBERED FEATURES (each entry is one instance; preserve the requested counts):
 ${plan.features.map((f,i)=>`${i+1}. ${f.description||f.type} (${f.width} × ${f.height} grid squares; rotation ${f.rotation??0}°).`).join('\n')}
+
+VISIBLE LIGHT SOURCES:
+${plan.lights.length?plan.lights.map(l=>`${l.name||'Light'}: ${l.preset??'legacy light'}${l.sourceFeatureId?` linked to feature ${plan.features.findIndex(f=>f.id===l.sourceFeatureId)+1}`:''}${l.roomId?` in ${l.roomId}`:''}; use ${lightIntentFromPlan(l).animation?.type||'steady illumination'} as the intended visual mood.`).join('\n'):'No special visible light sources are required.'}
+
+${generationId?`GENERATION REQUEST ID: ${generationId}\nKeep this image available in this conversation for an optional geometry-reading follow-up.`:''}
 
 The final image will sit beneath editable Foundry walls and doors. Following the reference reduces manual alignment work; it is not a request to generate geometry data.`;
 }

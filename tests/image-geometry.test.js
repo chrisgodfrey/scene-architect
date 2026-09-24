@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {analysisPrompt,analysisFrame,validateImageGeometry,proposedWallData,replaceSceneWalls,wallSignature} from '../scripts/image-geometry.js';
 const request={imageId:'test-image',width:1000,height:800};
+const sourceRequest={mode:'source',imageId:'generation-1',width:1200,height:900,sceneWidth:1000,sceneHeight:800,alignment:{scale:.8,offsetX:100,offsetY:-40}};
 const segment=(id,a,b,kind='wall')=>({id,a,b,kind,evidence:'visible',reviewRequired:false,note:''});
 const proposal=()=>({version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:request,walls:[segment('a',[.1,.2],[.4,.2]),segment('door',[.4,.2],[.5,.2],'door'),segment('b',[.5,.2],[.9,.2])],openings:[segment('gap',[.1,.5],[.2,.5],'open')],reviewNotes:[]});
 function mockScene() {
@@ -15,6 +16,11 @@ function mockScene() {
 test('analysis prompt specifies the fitted image, complete network, uncertainty and source identity',()=>{
   const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[{kind:'secret'}]},request);
   assert.match(text,/test-image/);assert.match(text,/Do not snap to grid/);assert.match(text,/complete scene wall network/);assert.match(text,/Set reviewRequired true/);
+});
+test('same-chat prompt requests source coordinates without another attachment',()=>{
+  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[]},sourceRequest);
+  assert.match(text,/generated earlier in this conversation/);assert.match(text,/Do not ask me to attach/);
+  assert.match(text,/"version":2/);assert.match(text,/normalized-source-image/);assert.match(text,/generation-1/);
 });
 test('normalized geometry accepts fenced JSON, pixel precision and diagonal segments',()=>{
   const p=proposal();p.walls.push(segment('diagonal',[.111,.333],[.777,.889]));
@@ -38,6 +44,30 @@ test('untrusted fields are stripped and secret/plan-informed segments require re
   const p=proposal();p.walls[0].flags={malicious:true};p.walls[0].kind='secret';p.walls[1].evidence='plan-informed';
   const result=validateImageGeometry(p,request);
   assert.equal(result.walls[0].flags,undefined);assert(result.walls[0].reviewRequired&&result.walls[1].reviewRequired);
+});
+test('source geometry transforms into fitted scene coordinates and round-trips canonically',()=>{
+  const raw={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:'generation-1',width:1200,height:900},
+    walls:[segment('wall',[.1,.2],[.4,.2])],openings:[],reviewNotes:[]};
+  const result=validateImageGeometry(raw,sourceRequest);
+  assert.deepEqual(result.walls[0].a,[.28,.21000000000000002]);assert.deepEqual(result.walls[0].b,[.52,.21000000000000002]);
+  assert.equal(result.version,1);assert.equal(result.coordinateSpace,'normalized-image');
+  assert.deepEqual(result.source,{imageId:'generation-1',width:1000,height:800});
+  assert.deepEqual(validateImageGeometry(result,sourceRequest),result);
+});
+test('source geometry clips visible spans, omits cropped spans and records review notes',()=>{
+  const clippedRequest={...sourceRequest,alignment:{scale:1.5,offsetX:0,offsetY:0}};
+  const raw={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:'generation-1',width:1200,height:900},
+    walls:[segment('partial',[0,.5],[.3,.5]),segment('outside',[.9,.7],[1,.7])],openings:[],reviewNotes:[]};
+  const result=validateImageGeometry(raw,clippedRequest);
+  assert.equal(result.walls.length,1);assert.deepEqual(result.walls[0].a,[0,.5]);assert.equal(result.walls[0].reviewRequired,true);
+  assert.match(result.walls[0].note,/Clipped/);assert(result.reviewNotes.some(n=>/outside.*omitted/.test(n)));
+});
+test('source geometry rejects the wrong generation and fitted-pixel zero length',()=>{
+  const raw={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:'other',width:1200,height:900},
+    walls:[segment('wall',[.1,.2],[.4,.2])],openings:[],reviewNotes:[]};
+  assert.throws(()=>validateImageGeometry(raw,sourceRequest),/different analysis image or generation/);
+  raw.source.imageId='generation-1';raw.walls[0]=segment('wall',[.1,.2],[.10001,.2]);
+  assert.throws(()=>validateImageGeometry(raw,sourceRequest),/zero pixel length/);
 });
 test('apply replaces walls only, saves durable backup, and restore keeps door states and custom data',async()=>{
   const scene=mockScene(),original=structuredClone(scene.walls),other=JSON.stringify([scene.lights,scene.tiles,scene.firstLevel]);

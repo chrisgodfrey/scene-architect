@@ -1,19 +1,34 @@
 <div class="sa-shell">
   <section class="sa-section">
     <h2>Scene Architect</h2>
-    <p>Create one illustrated map, then refine its editable Foundry walls and doors.</p>
+    <p>Work through the numbered steps in order: plan, generate, align, optionally refine geometry, then test in Foundry.</p>
+    <p class="sa-status sa-current" role="status">
+      <strong>Next:</strong> <span data-next-action-text>
+      {{#if next.copyLayoutPrompt}}describe the scene, then copy the layout request.{{/if}}
+      {{#if next.copyPlanRepairPrompt}}copy the correction request and send it to ChatGPT.{{/if}}
+      {{#if next.pastePlan}}import the corrected full plan JSON.{{/if}}
+      {{#if next.buildDraft}}build the validated plan as a Foundry draft.{{/if}}
+      {{#if next.exportGuide}}export the reference PNG.{{/if}}
+      {{#if next.copyMapPrompt}}copy the complete-map prompt and use it with the reference PNG.{{/if}}
+      {{#if next.previewMap}}choose the downloaded map image and preview its alignment.{{/if}}
+      {{#if next.copySourceAnalysisPrompt}}copy the same-chat geometry prompt, or choose the fitted-image fallback.{{/if}}
+      {{#if next.exportAnalysisImage}}use the fitted-image geometry fallback.{{/if}}
+      {{#if next.previewGeometry}}review the proposed geometry overlay before applying it.{{/if}}
+      </span>
+    </p>
     <div class="sa-actions sa-wrap">
       <select name="projectId" aria-label="Saved Scene Architect scene"><option value="">Choose saved scene…</option>{{#each projects}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</select>
       <button type="button" data-action="reopen">Reopen</button>
       <button type="button" data-action="newProject">New project</button>
       <button type="button" data-action="loadExample">Load laboratory example</button>
     </div>
-    {{#if sceneReady}}<p class="sa-status good">Working scene: <strong>{{sceneNameLinked}}</strong></p>{{/if}}
+    {{#if sceneReady}}<p class="sa-status good">Complete: draft scene exists. Working scene: <strong>{{sceneNameLinked}}</strong>.</p>{{/if}}
     {{#if editedGeometry}}<p class="sa-status warning">Native geometry or scene settings differ from the original plan. Manual wall and door edits are supported and preserved. The overlay uses your current walls; reference room labels and feature positions still come from the saved plan.</p>{{/if}}
     {{#if legacyTiles}}<p class="sa-status warning">This scene has {{legacyTiles}} older generated prop Tiles. They stay above any imported map. Build a new scene from the plan for a clean start, or remove unwanted Tiles in Foundry.</p>{{/if}}
   </section>
+
   <section class="sa-section">
-    <details {{#unless hasPlan}}open{{/unless}}>
+    <details {{#if planStepOpen}}open{{/if}}>
       <summary>1. Describe and plan the map</summary>
       <div class="sa-grid sa-grid-4">
         <label>Scene name<input name="sceneName" value="{{sceneName}}"></label>
@@ -22,32 +37,56 @@
         <label>Grid px<input type="number" name="gridSize" min="50" max="400" value="{{gridSize}}"></label>
       </div>
       <label>Describe the map<textarea name="brief" rows="5">{{brief}}</textarea></label>
-      <p class="hint">Copy the layout request to ChatGPT, then import the returned JSON. Or load the laboratory example above.</p>
-      <div class="sa-actions"><button type="button" data-action="copyLayoutPrompt">Copy layout request</button><button type="button" data-action="pastePlan">Import / edit plan JSON</button></div>
+      <ol class="sa-steps">
+        <li>Describe the environment, rooms, important features and desired light sources.</li>
+        <li><button class="{{#if next.copyLayoutPrompt}}sa-primary{{/if}}" type="button" data-action="copyLayoutPrompt">Copy layout request</button> and send it to ChatGPT.</li>
+        <li><button type="button" data-action="pastePlan">Import / edit plan JSON</button> using the JSON ChatGPT returns. Or load the laboratory example above.</li>
+      </ol>
+      {{#if planRepair}}
+      <div class="sa-status warning" role="status">
+        <p><strong>Plan not accepted:</strong> {{planRepair.error}}</p>
+        <p>The rejected JSON is retained in this wizard. Your current valid plan, if any, has not changed.</p>
+        <div class="sa-actions sa-wrap">
+          <button class="{{#if next.copyPlanRepairPrompt}}sa-primary{{/if}}" type="button" data-action="copyPlanRepairPrompt">Copy correction request</button>
+          <button class="{{#if next.pastePlan}}sa-primary{{/if}}" type="button" data-action="pastePlan">Import corrected plan JSON</button>
+          <button type="button" data-action="copyLayoutPrompt">Copy fresh layout request instead</button>
+        </div>
+        <p class="hint">Send the correction request in the same ChatGPT conversation. Scene Architect will validate every returned plan again.</p>
+      </div>
+      {{/if}}
     </details>
     {{#if hasPlan}}
-      <p class="sa-status good">{{planSummary}}</p>
+      <p class="sa-status good">Complete: {{planSummary}}.</p>
       {{#each warnings}}<p class="sa-status warning">{{this}}</p>{{/each}}
       <div class="sa-actions sa-wrap">
-        <button type="button" data-action="buildDraft">{{#if sceneReady}}Build a new scene from plan{{else}}Build draft scene{{/if}}</button>
+        <button class="{{#if next.buildDraft}}sa-primary{{/if}}" type="button" data-action="buildDraft">{{#if sceneReady}}Build a new scene from plan{{else}}Build draft scene{{/if}}</button>
         <button type="button" data-action="downloadPlan">Download original plan JSON</button>
         {{#if sceneReady}}<button type="button" data-action="viewScene">View scene</button>{{/if}}
       </div>
       <details><summary>Inspect original plan</summary><p class="hint">Native edits are saved by Foundry, not written back into this JSON.</p><pre>{{planJson}}</pre></details>
     {{/if}}
   </section>
+
   {{#if sceneReady}}
   <section class="sa-section">
     <h2>2. Generate one complete map</h2>
-    <p>Export the PNG reference and attach it in ChatGPT with the copied map prompt. Generate and download one complete map image.</p>
-    <p class="hint">The reference guides architecture and composition. Artwork can flow across grid boundaries. Image generation may shift walls or doors; expect to review and adjust them in Foundry.</p>
-    <div class="sa-actions"><button type="button" data-action="exportGuide">Export PNG reference</button><button type="button" data-action="copyMapPrompt">Copy map prompt</button></div>
+    <ol class="sa-steps">
+      <li><button class="{{#if next.exportGuide}}sa-primary{{/if}}" type="button" data-action="exportGuide">Export PNG reference</button>.</li>
+      <li><button class="{{#if next.copyMapPrompt}}sa-primary{{/if}}" type="button" data-action="copyMapPrompt">Copy complete-map prompt</button>. Attach the exported reference in the same ChatGPT conversation.</li>
+      <li>Generate and download one complete map image. Keep that conversation open if you want to use the no-reattachment geometry shortcut in step 4.</li>
+    </ol>
+    <p class="hint">The reference guides architecture, feature placement and visible light sources. Artwork can flow across grid boundaries. Image generation may shift walls or doors, so review the result in Foundry.</p>
   </section>
+
   <section class="sa-section">
     <h2>3. Import and align the map</h2>
-    <label>Complete map image (PNG, JPEG or WebP, up to 30 MB)<input type="file" name="mapFile" accept="image/png,image/jpeg,image/webp"></label>
-    {{#if mapSource}}<p class="hint">Saved source: {{mapSource}}. Leave the file empty to reuse it.</p>{{/if}}
-    <p class="hint">The full image initially fits the scene's full rectangle. A different aspect ratio will stretch. Scale is centred; positive offsets move the image right/down. Preview again after changing values. Settings save when you apply.</p>
+    <ol class="sa-steps">
+      <li><label>Choose the complete map image (PNG, JPEG or WebP, up to 30 MB)<input type="file" name="mapFile" accept="image/png,image/jpeg,image/webp"></label></li>
+      <li>Adjust scale or offsets only when needed, then <button class="{{#if next.previewMap}}sa-primary{{/if}}" type="button" data-action="previewMap">preview alignment</button>.</li>
+      <li>Inspect the artwork and live-wall overlay, then <button type="button" data-action="applyMap">apply map background</button>.</li>
+    </ol>
+    {{#if mapSource}}<p class="sa-status good">Complete: a map source is saved. Leave the file empty to reuse {{mapSource}}.</p>{{/if}}
+    <p class="hint">The full image initially fits the scene rectangle. A different aspect ratio stretches. Scale is centred; positive offsets move the image right/down. Preview again after every change.</p>
     <div class="sa-grid sa-grid-3">
       <label>Scale (%)<input name="mapScale" type="number" min="10" max="400" step="1" value="{{scale}}"></label>
       <label>Horizontal offset (px)<input name="mapX" type="number" min="-8192" max="8192" value="{{offsetX}}"></label>
@@ -56,38 +95,60 @@
     <label class="sa-check"><input name="showWalls" type="checkbox" checked> Show live walls and doors in preview</label>
     <p class="hint">Yellow: walls · Blue: doors · Purple: secret doors. The overlay is never baked into your map.</p>
     <p class="sa-map-warning sa-status warning" role="status"></p>
-    <div class="sa-actions"><button type="button" data-action="previewMap">Preview alignment</button><button type="button" data-action="applyMap">Apply map background</button></div>
     <div class="sa-map-preview"></div>
   </section>
+
   <section class="sa-section">
     <h2>4. Optional: fit geometry to the finished artwork</h2>
-    <p>After applying your map background, export a clean analysis image and attach it to ChatGPT with the analysis prompt. Paste or upload the returned geometry JSON below.</p>
-    <p class="hint">Use this exported image, which includes your applied scale and position. Ask ChatGPT to analyse it in a separate follow-up after generation. No API connection is used.</p>
+    <p>This replaces all current walls and doors only after you import, preview and confirm the proposal. Lights, Tiles, tokens and the background stay unchanged.</p>
     {{#if analysisReady}}
-    <div class="sa-actions sa-wrap"><button type="button" data-action="exportAnalysisImage">Export analysis image</button><button type="button" data-action="copyAnalysisPrompt">Copy analysis prompt</button></div>
-    {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
-    <label>Geometry JSON<textarea name="geometryJson" rows="6" placeholder="Paste the image-analysis JSON here, not the original layout plan">{{geometryJson}}</textarea></label>
-    <label>Or choose a JSON file (takes priority over pasted text)<input type="file" name="geometryFile" accept=".json,application/json"></label>
-    <button type="button" data-action="importGeometry">Import geometry for review</button>
-    {{#if hasProposal}}
-    <p class="sa-status good">{{geometrySummary}}</p>
-    {{#each geometryNotes}}<p class="sa-status warning">{{this}}</p>{{/each}}
-    {{#each geometryReview}}<p class="sa-status warning">{{this}}</p>{{/each}}
-    <label>Geometry overlay<select name="geometryOverlay"><option value="proposed">Proposed geometry</option><option value="current">Current geometry</option><option value="both">Both</option><option value="none">Artwork only</option></select></label>
-    <p class="hint">Proposed walls: mint · Doors: pink · Review markers: dashed orange. Current walls: yellow. Open passages are dashed guides only. Preview again after changing the overlay.</p>
-    <label class="sa-check"><input type="checkbox" name="geometryReviewed"> I have reviewed the marked segments and accept them as a starting point.</label>
-    <div class="sa-actions"><button type="button" data-action="previewGeometry">Preview geometry</button><button type="button" data-action="applyGeometry">Apply proposed geometry</button></div>
-    <div class="sa-geometry-preview"></div>
-    <p class="hint">Applying replaces all current walls and doors, including manual edits, and saves the previous walls for restoration. Geometry is estimated from the image and may still need correction.</p>
-    {{/if}}
-    {{else}}<p class="hint">Apply your complete map background first to enable this step.</p>{{/if}}
+      {{#if sameChatReady}}
+      <h3>Recommended: use the original ChatGPT conversation</h3>
+      <ol class="sa-steps">
+        <li><button class="{{#if next.copySourceAnalysisPrompt}}sa-primary{{/if}}" type="button" data-action="copySourceAnalysisPrompt">Copy same-chat geometry prompt</button>.</li>
+        <li>Send it in the conversation that generated the map. Do not attach the image again.</li>
+        <li>Paste or upload the returned geometry JSON below.</li>
+      </ol>
+      {{else}}
+      <p class="sa-status warning">The applied map is not linked to a generation request, so the same-chat shortcut is unavailable.</p>
+      {{/if}}
+      <details {{#unless sameChatReady}}open{{/unless}}>
+        <summary>Fallback: attach the exact fitted image</summary>
+        <ol class="sa-steps">
+          <li><button class="{{#if next.exportAnalysisImage}}sa-primary{{/if}}" type="button" data-action="exportAnalysisImage">Export fitted analysis image</button>.</li>
+          <li>Attach that exported image in ChatGPT.</li>
+          <li><button type="button" data-action="copyAnalysisPrompt">Copy fitted-image analysis prompt</button> and send it with the attachment.</li>
+        </ol>
+        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the applied scale and offsets.</p>
+      </details>
+      {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
+      <label>Geometry JSON<textarea name="geometryJson" rows="6" placeholder="Paste the geometry-analysis JSON here, not the original layout plan">{{geometryJson}}</textarea></label>
+      <label>Or choose a JSON file (takes priority over pasted text)<input type="file" name="geometryFile" accept=".json,application/json"></label>
+      <button type="button" data-action="importGeometry">Import geometry for review</button>
+      {{#if hasProposal}}
+      <p class="sa-status good">Complete: {{geometrySummary}}.</p>
+      {{#each geometryNotes}}<p class="sa-status warning">{{this}}</p>{{/each}}
+      {{#each geometryReview}}<p class="sa-status warning">{{this}}</p>{{/each}}
+      <label>Geometry overlay<select name="geometryOverlay"><option value="proposed">Proposed geometry</option><option value="current">Current geometry</option><option value="both">Both</option><option value="none">Artwork only</option></select></label>
+      <p class="hint">Proposed walls: mint · Doors: pink · Review markers: dashed orange. Current walls: yellow. Open passages are dashed guides only.</p>
+      <label class="sa-check"><input type="checkbox" name="geometryReviewed"> I reviewed the marked segments and accept them as a starting point.</label>
+      <div class="sa-actions"><button class="{{#if next.previewGeometry}}sa-primary{{/if}}" type="button" data-action="previewGeometry">Preview geometry</button><button type="button" data-action="applyGeometry">Apply proposed geometry</button></div>
+      <div class="sa-geometry-preview"></div>
+      <p class="hint">Applying saves the previous walls for restoration. Geometry is estimated and may still need correction.</p>
+      {{/if}}
+    {{else}}<p class="hint">Apply the complete map background in step 3 to enable geometry analysis.</p>{{/if}}
     {{#if hasGeometryBackup}}<button type="button" data-action="restoreGeometry">Restore previous walls</button>{{/if}}
   </section>
+
   <section class="sa-section">
-    <h2>5. Refine in Foundry</h2>
-    <p>View the scene and use Foundry's wall controls to move wall endpoints, reposition doors or add/remove segments to match the artwork. Adjust lights as needed. Test movement and vision with a player token.</p>
-    <p class="hint">The module starts with geometry from the plan; it does not detect walls in the generated image. Reimporting changes only the background and preserves your native edits. Global image alignment cannot correct local changes in room shapes.</p>
-    <button type="button" data-action="viewScene">View scene</button>
+    <h2>5. Test and refine in Foundry</h2>
+    <ol class="sa-steps">
+      <li><button type="button" data-action="viewScene">View scene</button> and set scene darkness high enough to see lights clearly.</li>
+      <li>Check that each lamp, flame or magical source is centred on the feature it represents and has the intended effect.</li>
+      <li>Test wall occlusion, doors, movement and token vision with a player-controlled token.</li>
+      <li>Use Foundry's native wall and light controls for final artistic adjustments.</li>
+    </ol>
+    <p class="sa-footer-note">Reapplying a map changes only the background and preserves native walls, lights, Tiles and tokens. Applying analysed geometry changes only walls and doors and provides one-level restore.</p>
   </section>
   {{/if}}
 </div>

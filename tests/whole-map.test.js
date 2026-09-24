@@ -7,12 +7,23 @@ import {applyDocumentUpdate} from './mock-update.js';
 const plan=JSON.parse(fs.readFileSync(new URL('../fixtures/laboratory.json',import.meta.url)));
 const scene=()=>({id:'map-test',width:1960,height:1680,walls:[{c:[17,31,256,358],door:2}],lights:[{x:400}],tiles:[{id:'keep'}],grid:{size:70},firstLevel:{background:{src:'old.png'}},flags:{'scene-architect':{plan:structuredClone(plan)}},getFlag(scope,key){return this.flags[scope]?.[key];},async update(data){applyDocumentUpdate(this,data);}});
 
-test('map request describes one complete image and all numbered feature instances',()=>{
-  const prompt=wholeMapPrompt(plan,scene());
+test('map request describes one complete image, features, light intent and generation identity',()=>{
+  const prompt=wholeMapPrompt(plan,scene(),{generationId:'request-123'});
   assert.match(prompt,/ONE complete/);assert.match(prompt,/1960 × 1680/);
   for(const [i,f] of plan.features.entries())assert(prompt.includes(`${i+1}. ${f.description}`));
+  for(const light of plan.lights)assert(prompt.includes(light.name));
+  assert.match(prompt,/GENERATION REQUEST ID: request-123/);
   assert.match(prompt,/extend naturally across grid boundaries/);
   assert(!prompt.includes('IMPORT SLOT:'));
+});
+test('map request carries semantic preset effects without explicit overrides',()=>{
+  const semantic=structuredClone(plan);semantic.lights=[
+    {name:'Portal',preset:'magic-portal',sourceFeatureId:'instantiator'},
+    {name:'Unreliable engine',preset:'flickering-lamp',sourceFeatureId:'engine'}
+  ];
+  const prompt=wholeMapPrompt(semantic,scene());
+  assert.match(prompt,/Portal: magic-portal linked to feature 4; use rainbowswirl/);
+  assert.match(prompt,/Unreliable engine: flickering-lamp linked to feature 5; use flicker/);
 });
 test('whole-map application accepts arbitrary native edits and preserves documents',async()=>{
   const s=scene(),before=JSON.stringify([s.walls,s.lights,s.tiles]);
@@ -26,9 +37,11 @@ test('failed map application restores background without touching native edits',
 });
 test('map source and alignment persist on reopen with stale-write protection',async()=>{
   const s=scene(),w=projectFromScene(s),stale=projectFromScene(s);
-  w.map={src:'worlds/map.png',scale:1.1,x:12,y:-8,width:1024,height:1024};await saveProject(s,w);
-  const reopened=projectFromScene(s);assert.deepEqual(reopened.map,w.map);
+  w.generation={imageId:'generation-1',createdAt:123,width:1960,height:1680};
+  w.map={src:'worlds/map.png',scale:1.1,x:12,y:-8,width:1024,height:1024,generationId:'generation-1'};await saveProject(s,w);
+  const reopened=projectFromScene(s);assert.deepEqual(reopened.map,w.map);assert.deepEqual(reopened.generation,w.generation);
   reopened.map.x=100;assert.equal(w.map.x,12);
+  reopened.generation.imageId='changed';assert.equal(w.generation.imageId,'generation-1');
   await assert.rejects(saveProject(s,stale),/another window/);
 });
 test('alignment and frame reject invalid sizes and unsupported transforms, not wall drift',()=>{

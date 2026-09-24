@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { normalizePlan, validatePlan, planWarnings } from '../scripts/plan.js';
 import { compileGeometry } from '../scripts/geometry.js';
 import { migrateArt, validateArt, usedAssets, artworkRequests } from '../scripts/art-manifest.js';
-import { wallDataFromSegment } from '../scripts/foundry-data.js';
+import { lightDataFromPlan, wallDataFromSegment } from '../scripts/foundry-data.js';
 import { geometryConflict, projectFromScene, saveProject, propTileData, applyRenderedArt } from '../scripts/project.js';
 import { fitRect, renderSceneArt } from '../scripts/renderer.js';
 import { applyDocumentUpdate } from './mock-update.js';
@@ -27,6 +27,33 @@ test('laboratory validates, connected rooms and exactly three shared restraint b
   assert.equal(p.features.filter(f=>f.assetId==='restraint-bed').length,3);
   assert.equal(usedAssets(p).length,11);
   const prompt=artworkRequests(p);assert.equal(prompt.match(/IMPORT SLOT: restraint-bed\n/g).length,1);assert.match(prompt,/Instances using this image: 3/);assert.match(prompt,/several generations and downloads/);
+});
+test('semantic lights link to visible sources and preserve bounded animation overrides',()=>{
+  const p=plan();p.lights=[{
+    name:'Instantiator portal',preset:'magic-portal',sourceFeatureId:'instantiator',
+    dim:10,alpha:.7,animation:{type:'rainbowswirl',speed:6,intensity:8,reverse:true}
+  }];
+  const checked=validatePlan(normalizePlan(p)),source=checked.features.find(f=>f.id==='instantiator'),light=checked.lights[0];
+  assert.equal(light.x,source.x+source.width/2);assert.equal(light.y,source.y+source.height/2);
+  const data=lightDataFromPlan(light,checked,{rainbowswirl:{}});
+  assert.equal(data.x,light.x*checked.scene.gridSize);assert.equal(data.config.dim,10);assert.equal(data.config.color,'#954aff');
+  assert.deepEqual(data.config.animation,{type:'rainbowswirl',speed:6,intensity:8,reverse:true});
+  assert.equal(data.flags['scene-architect'].sourceFeatureId,'instantiator');
+});
+test('legacy animations retain their meaning and unavailable effects fail explicitly',()=>{
+  const p=plan();p.lights=[{name:'Old lamp',x:4,y:5,animation:'flicker'}];
+  const checked=validatePlan(normalizePlan(p)),light=checked.lights[0];
+  assert.deepEqual(light.animation,{type:'flicker',speed:2,intensity:2,reverse:false});
+  assert.equal(lightDataFromPlan(light,checked,{flicker:{}}).config.animation.type,'flicker');
+  assert.throws(()=>lightDataFromPlan(light,checked,{}),/not available/);
+});
+test('semantic lights reject missing sources, invalid ambient placement and unsafe overrides',()=>{
+  const missing=plan();missing.lights=[{preset:'flame',sourceFeatureId:'missing'}];
+  assert.throws(()=>validatePlan(normalizePlan(missing)),/existing feature/);
+  const ambient=plan();ambient.lights=[{preset:'ambient-fill',roomId:'medical',x:20,y:20}];
+  assert.throws(()=>validatePlan(normalizePlan(ambient)),/between/);
+  const override=plan();override.lights=[{preset:'steady-lamp',sourceFeatureId:'instantiator',alpha:2}];
+  assert.throws(()=>validatePlan(normalizePlan(override)),/alpha/);
 });
 test('version 1 migration is deterministic, non-mutating to original and preserves floor semantics',()=>{
   const old=plan();delete old.art;old.version=1;

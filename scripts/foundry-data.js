@@ -1,4 +1,18 @@
 const MODULE_ID="scene-architect";
+const LIGHT_PRESET_DATA={
+  'steady-lamp':{dim:6,bright:3,color:'#ffb45b',alpha:.5},
+  'flickering-lamp':{dim:6,bright:2,color:'#ffb45b',alpha:.55,animation:{type:'flicker',speed:3,intensity:4,reverse:false}},
+  flame:{dim:6,bright:3,color:'#ff9b4a',alpha:.55,animation:{type:'torch',speed:3,intensity:4,reverse:false}},
+  'magic-portal':{dim:8,bright:3,color:'#954aff',alpha:.6,animation:{type:'rainbowswirl',speed:3,intensity:6,reverse:false}},
+  'pulsing-magic':{dim:7,bright:2,color:'#6f8cff',alpha:.55,animation:{type:'pulse',speed:3,intensity:5,reverse:false}},
+  'ambient-fill':{dim:8,bright:0,color:'#ffffff',alpha:.35}
+};
+export const lightAnimationCatalog=()=>globalThis.CONFIG?.Canvas?.lightAnimations??{};
+export const lightAnimationKeys=(catalog=lightAnimationCatalog())=>Object.keys(catalog).sort();
+export function lightIntentFromPlan(light) {
+  const preset=LIGHT_PRESET_DATA[light.preset]??{};
+  return {preset,animation:light.animation??preset.animation};
+}
 export function wallDataFromSegment(seg, grid) {
   const S=(globalThis.CONST ?? {}).EDGE_SENSE_TYPES ?? {NONE:0,LIMITED:10,NORMAL:20,PROXIMITY:30,DISTANCE:40};
   const M=(globalThis.CONST ?? {}).WALL_MOVEMENT_TYPES ?? {NONE:0,NORMAL:20};
@@ -20,8 +34,15 @@ export function wallDataFromSegment(seg, grid) {
   return base;
 }
 
-export function lightDataFromPlan(l, plan) {
-  const g=plan.scene.gridSize;
+export function lightDataFromPlan(l,plan,catalog=lightAnimationCatalog()) {
+  const g=plan.scene.gridSize,{preset,animation:configured}=lightIntentFromPlan(l);
+  const animation=configured?{
+    type:configured.type,
+    speed:Number(configured.speed),
+    intensity:Number(configured.intensity),
+    reverse:configured.reverse
+  }:{type:"",speed:5,intensity:5,reverse:false};
+  if(animation.type&&!Object.prototype.hasOwnProperty.call(catalog,animation.type))throw new Error(`${l.name||'Light'}: animation "${animation.type}" is not available in this Foundry installation.`);
   return {
     name:l.name || "Scene Architect Light",
     x:Number(l.x)*g,
@@ -30,19 +51,18 @@ export function lightDataFromPlan(l, plan) {
     vision:false,
     hidden:false,
     config:{
-      dim:Number(l.dim ?? 6),
-      bright:Number(l.bright ?? 3),
+      dim:Number(l.dim ?? preset.dim ?? 6),
+      bright:Number(l.bright ?? preset.bright ?? 3),
       angle:Number(l.angle ?? 360),
-      alpha:Number(l.alpha ?? 0.35),
-      color:l.color || "#ffb45b",
+      alpha:Number(l.alpha ?? preset.alpha ?? 0.35),
+      color:l.color || preset.color || "#ffb45b",
       attenuation:Number(l.attenuation ?? 0.5),
       luminosity:Number(l.luminosity ?? 0.5),
       saturation:Number(l.saturation ?? 0),
       contrast:Number(l.contrast ?? 0),
       shadows:Number(l.shadows ?? 0),
-      animation:l.animation ? {type:l.animation,speed:2,intensity:2,reverse:false} : {type:"",speed:5,intensity:5,reverse:false}
+      animation
     },
-    flags:{[MODULE_ID]:{generated:true}}
+    flags:{[MODULE_ID]:{generated:true,preset:l.preset??'legacy',sourceFeatureId:l.sourceFeatureId??null}}
   };
 }
-
