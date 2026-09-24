@@ -128,7 +128,7 @@ try {
   assert(same(pixel(renderWholeMap(uploadedMap,scene),100,35),[255,0,0,255]),'Encoded uploaded PNG has no preview overlay');
   const reopened=new SceneArchitectApp();reopened.workflow=projectFromScene(scene);await reopened.render();
   assert(reopened.workflow.map.src.includes('-source.png'),'Reopen restores original full-map source');
-  assert(reopened.workflow.map.generationId===generation.imageId&&reopened.element.textContent.includes('Do not attach the image again'),'Applied map retains generation identity and offers same-chat geometry guidance');
+  assert(reopened.workflow.map.generationId===generation.imageId&&reopened.element.textContent.includes('registered vectors')&&reopened.element.textContent.includes('do not attach the image again'),'Applied map retains generation identity and offers registered same-chat geometry guidance');
   assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copySourceAnalysisPrompt'&&reopened.element.querySelector('[data-action="exportAnalysisImage"]'),'Map-applied workflow recommends same-chat analysis while keeping the fitted-image fallback reachable');
   assert(reopened.element.textContent.includes('Manual wall and door edits are supported'),'Native edits show an advisory without blocking the workflow');
   reopened.element.querySelector('[name="mapX"]').value='12';
@@ -145,12 +145,13 @@ try {
   assert(failed&&scene.firstLevel.background.src===background,'Upload failure leaves the existing background intact');
   foundry.applications.apps.FilePicker.upload=originalUpload;
   const sourceRequest=await reopened.analysisRequest('source');
-  assert(sourceRequest.imageId===generation.imageId&&sourceRequest.width===200&&sourceRequest.height===100&&sourceRequest.sceneWidth===1960,'Same-chat analysis uses source dimensions, generation identity and fitted-scene metadata');
-  const sourceSeg=(id,a,b,kind='wall')=>({id,a,b,kind,evidence:'visible',reviewRequired:false,note:''});
-  const sourceProposal={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[sourceSeg('source-wall',[.1,.2],[.4,.2])],openings:[],reviewNotes:[]};
+  assert(sourceRequest.imageId===generation.imageId&&sourceRequest.width===200&&sourceRequest.height===100&&sourceRequest.sceneWidth===1960&&sourceRequest.registration.segments.length===scene.walls.length&&sourceRequest.wallSignature,'Same-chat analysis persists source dimensions, live vector registration and a freshness signature');
+  const sourceIds=[...sourceRequest.registration.segments,...sourceRequest.registration.openings].map(s=>s.id);
+  const sourceSeg=(id,a,b,kind='wall',sourceIds=[],change='added')=>({id,a,b,kind,evidence:'visible',reviewRequired:false,note:'',sourceIds,change});
+  const sourceProposal={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[sourceSeg('source-wall',[.1,.2],[.4,.2],'wall',[sourceIds[0]],'moved')],openings:[],removedSourceIds:sourceIds.slice(1),reviewNotes:[]};
   reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(sourceProposal);await reopened.importGeometry();
   const transformed=scene.getFlag('scene-architect','geometryProposal');
-  assert(transformed.origin.version===2&&Math.abs(transformed.walls[0].a[0]-(.1+12/1960))<1e-10&&!!reopened.element.querySelector('.sa-geometry-preview canvas'),'Same-chat source geometry is transformed and previewed in fitted-scene coordinates');
+  assert(transformed.origin.version===2&&transformed.walls[0].sourceIds[0]===sourceIds[0]&&Math.abs(transformed.walls[0].a[0]-(.1+12/1960))<1e-10&&!!reopened.element.querySelector('.sa-geometry-preview canvas'),'Same-chat source geometry preserves vector correspondence while transforming and previewing fitted coordinates');
   assert(reopened.element.querySelector('.sa-primary').dataset.action==='applyGeometry','Previewed geometry advances the primary action to apply');
   await scene.setFlag('scene-architect','geometryProposal',null);await reopened.render();
   const request=await reopened.analysisRequest();
@@ -161,10 +162,17 @@ try {
   URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
   await reopened.exportAnalysisImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
   const exportUrl=URL.createObjectURL(exportedBlob),exportedImage=await loadImage(exportUrl);
-  assert(exportedImage.width===1960&&same(pixel(renderWholeMap(exportedImage,scene),100,35),[255,0,0,255]),'Analysis export contains fitted artwork without native wall overlays');URL.revokeObjectURL(exportUrl);
-  const seg=(id,a,b,kind='wall',reviewRequired=false)=>({id,a,b,kind,evidence:'visible',reviewRequired,note:reviewRequired?'Check this opening':''});
-  const proposal={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:1960,height:1680},walls:[seg('wall1',[.1,.2],[.4,.2]),seg('door1',[.4,.2],[.5,.2],'door'),seg('wall2',[.5,.2],[.9,.2])],openings:[seg('gap',[.1,.5],[.2,.5],'open',true)],reviewNotes:['Confirm the passage.']};
+  const prior=request.registration.segments[0],priorX=Math.round((prior.a[0]+prior.b[0])*exportedImage.width/2),priorY=Math.round((prior.a[1]+prior.b[1])*exportedImage.height/2);
+  const exportedCanvas=renderWholeMap(exportedImage,scene,{},false),cleanAnalysis=renderWholeMap(await loadImage(scene.firstLevel.background.src),scene,{},false);
+  assert(exportedImage.width===1960&&!same(pixel(exportedCanvas,priorX,priorY),pixel(cleanAnalysis,priorX,priorY)),'Fitted analysis export overlays labelled registered vectors on otherwise unchanged artwork');URL.revokeObjectURL(exportUrl);
+  const seg=(id,a,b,kind='wall',reviewRequired=false,sourceIds=[],change='added')=>({id,a,b,kind,evidence:'visible',reviewRequired,note:reviewRequired?'Check this opening':'',sourceIds,change});
+  const fittedIds=[...request.registration.segments,...request.registration.openings].map(s=>s.id);
+  const proposal={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:1960,height:1680},walls:[seg('wall1',[.1,.2],[.4,.2],'wall',false,[fittedIds[0]],'moved'),seg('door1',[.4,.2],[.5,.2],'door'),seg('wall2',[.5,.2],[.9,.2])],openings:[seg('gap',[.1,.5],[.2,.5],'open',true)],removedSourceIds:fittedIds.slice(1),reviewNotes:['Confirm the passage.']};
   const originalWalls=JSON.stringify(scene.walls),preserved=JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background]);
+  const promptWallX=scene.walls[0].c[0];scene.walls[0].c[0]++;reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(proposal);
+  let staleRequest=false;try{await reopened.importGeometry();}catch(e){staleRequest=e.message.includes('current walls changed');}
+  scene.walls[0].c[0]=promptWallX;
+  assert(staleRequest,'Wall edits after copying the prompt invalidate registered geometry before import');
   reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify({...proposal,source:{...proposal.source,imageId:'wrong-image'}});
   let rejected=false;try{await reopened.importGeometry();}catch(e){rejected=e.message.includes('different analysis image');}
   assert(rejected&&JSON.stringify(scene.walls)===originalWalls,'JSON from a different analysis image is rejected without wall changes');
@@ -180,9 +188,10 @@ try {
   foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyGeometry();
   assert(JSON.stringify(scene.walls)===originalWalls,'Cancelling geometry replacement leaves native documents untouched');
   foundry.applications.api.DialogV2.confirm=async()=>true;
-  scene.walls[0].c[0]++;
-  let stale=false;try{await reopened.applyGeometry();}catch(e){stale=e.message.includes('Preview the proposed geometry');}
-  assert(stale,'Manual wall edits invalidate an earlier geometry preview');
+  const wallX=scene.walls[0].c[0];scene.walls[0].c[0]++;
+  let stale=false;try{await reopened.applyGeometry();}catch(e){stale=e.message.includes('Preview the proposed geometry')||e.message.includes('current walls changed');}
+  assert(stale,'Manual wall edits invalidate the copied geometry request and earlier preview');
+  scene.walls[0].c[0]=wallX;
   const beforeReplacement=structuredClone(scene.walls);
   await reopened.previewGeometry();await reopened.applyGeometry();
   assert(scene.walls.length===3&&scene.walls[1].door===1&&!scene.walls.some(w=>w.flags?.['scene-architect']?.analysisSegment==='gap'),'Apply creates native wall/door documents and leaves open passages unblocked');

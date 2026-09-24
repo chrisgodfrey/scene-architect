@@ -7,7 +7,7 @@ import { geometryConflict, projectFromScene, saveProject } from "./project.js";
 
 import {renderGuide, wholeMapPrompt, renderWholeMap, mapAlignment, assertMapFrame, applyWholeMap} from './whole-map.js';
 
-import {analysisFrame, analysisPrompt, backgroundPath, validateImageGeometry, proposedWallData, drawProposal, wallSignature, replaceSceneWalls} from './image-geometry.js';
+import {analysisFrame, analysisPrompt, backgroundPath, buildRegistrationPrior, validateImageGeometry, proposedWallData, drawProposal, drawRegistrationPrior, wallSignature, replaceSceneWalls} from './image-geometry.js';
 
 const MODULE_ID = "scene-architect";
 const MODULE_TITLE = "Scene Architect";
@@ -335,18 +335,20 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   async analysisRequest(mode='fitted') {
     const frame=this.assertAnalysisReady();
     if(mode==='source'&&!this.workflow.map.generationId)throw new Error('This map is not linked to a generation request. Use the fitted-image fallback.');
-    const source=mode==='source',desired={
+    const source=mode==='source',signature=wallSignature(this.scene),desired={
       mode:source?'source':'fitted',
       imageId:source?this.workflow.map.generationId:crypto.randomUUID(),
       frame,
+      wallSignature:signature,
       width:source?this.workflow.map.width:this.scene.width,
       height:source?this.workflow.map.height:this.scene.height,
       sceneWidth:this.scene.width,
       sceneHeight:this.scene.height,
       alignment:source?{scale:this.workflow.map.scale,offsetX:this.workflow.map.x,offsetY:this.workflow.map.y}:undefined
     };
+    desired.registration=buildRegistrationPrior(this.plan,this.scene,desired);
     let request=this.scene.getFlag(MODULE_ID,'geometryRequest');
-    const same=request&&request.mode===desired.mode&&request.frame===desired.frame&&request.width===desired.width&&request.height===desired.height&&JSON.stringify(request.alignment)===JSON.stringify(desired.alignment);
+    const same=request&&request.mode===desired.mode&&request.frame===desired.frame&&request.wallSignature===signature&&request.width===desired.width&&request.height===desired.height&&JSON.stringify(request.alignment)===JSON.stringify(desired.alignment);
     if(!same) {
       request=desired;
       await this.scene.setFlag(MODULE_ID,'geometryRequest',request);
@@ -356,19 +358,20 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   async copySourceAnalysisPrompt() {await copyText(analysisPrompt(this.plan,await this.analysisRequest('source')));}
   async exportAnalysisImage() {
     const request=await this.analysisRequest('fitted'),image=await loadImage(backgroundPath(this.scene));
-    const blob=await canvasBlob(renderWholeMap(image,this.scene,{},false));
-    if(request.frame!==analysisFrame(this.scene))throw new Error('Background changed while exporting. Try again.');
+    const blob=await canvasBlob(drawRegistrationPrior(renderWholeMap(image,this.scene,{},false),request.registration));
+    if(request.frame!==analysisFrame(this.scene)||request.wallSignature!==wallSignature(this.scene))throw new Error('Background or walls changed while exporting. Try again.');
     downloadBlob(`${slugify(this.scene.name)}-analyse-${request.imageId}.png`,blob);
   }
   async copyAnalysisPrompt() {await copyText(analysisPrompt(this.plan,await this.analysisRequest('fitted')));}
   async importGeometry() {
     const frame=this.assertAnalysisReady(),request=this.scene.getFlag(MODULE_ID,'geometryRequest');
     if(!request||request.frame!==frame)throw new Error('Export the analysis image and copy the analysis prompt first.');
+    if(request.wallSignature&&request.wallSignature!==wallSignature(this.scene))throw new Error('The current walls changed after this analysis request. Export or copy a fresh geometry request.');
     const input=this.element.querySelector('[name="geometryJson"]').value;
     const file=this.element.querySelector('[name="geometryFile"]').files[0];
     if(file&&file.size>1_000_000)throw new Error('Geometry JSON exceeds 1 MB.');
     const proposal=validateImageGeometry(file?await file.text():input,request);
-    if(analysisFrame(this.scene)!==frame)throw new Error('Background changed during import. Export the analysis image again.');
+    if(analysisFrame(this.scene)!==frame||request.wallSignature&&request.wallSignature!==wallSignature(this.scene))throw new Error('Background or walls changed during import. Request fresh geometry.');
     await this.scene.setFlag(MODULE_ID,'geometryProposal',proposal);
     this.geometryPreview=null;await this.render();await this.previewGeometry();
     ui.notifications.info('Geometry proposal saved for review. No native walls have changed.');

@@ -23,10 +23,10 @@ any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.5** makes the complete-map workflow easier to follow, adds
-purposeful semantic lights, supports same-chat geometry analysis without
-reattaching an unchanged map, and adds a guided correction loop when returned
-plan JSON fails validation.
+**0.2.0-alpha.6** adds plan-guided geometry registration. ChatGPT now receives
+stable current-wall, room, feature and passage context when comparing the
+finished map, while the fitted-image fallback includes a labelled translucent
+comparison overlay. Returned geometry must account for every registered vector.
 
 ### Install or update in Foundry
 
@@ -39,9 +39,9 @@ plan JSON fails validation.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.5**.
+   **0.2.0-alpha.6**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.5)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.6)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -60,7 +60,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.5` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.6` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -124,15 +124,24 @@ every retry. To start over instead, use **Copy fresh layout request instead**.
 1. **Apply map background** first, including any overall scale or position changes.
 2. If the unchanged downloaded image came from the current ChatGPT conversation,
    select **Copy same-chat geometry prompt** and send it in that conversation.
-   Scene Architect requests coordinates against the earlier source image, then
-   applies the saved scale and offsets locally. You do not attach the image again.
+   Scene Architect includes a compact registered prior containing the current
+   Foundry wall vectors, planned open passages, room rectangles and feature
+   centres. ChatGPT can compare stable source IDs with the earlier source image
+   instead of rediscovering anonymous rooms. Scene Architect then applies the
+   saved scale and offsets locally. You do not attach the image again.
 3. The same-chat path is a convenience, not a guaranteed OpenAI capability. Use
    the **Fallback: attach the exact fitted image** workflow when you edited the
    image, changed conversations, imported an external map, or ChatGPT cannot inspect
-   its earlier output. Select **Export fitted analysis image**, attach that file,
-   then select **Copy fitted-image analysis prompt**. Do not attach a screenshot
-   with coloured overlays.
-4. Ask ChatGPT to return the geometry JSON. Paste it into **Geometry JSON**, or
+   its earlier output. Select **Export registered comparison image**, attach that
+   exact file, then select **Copy fitted-image analysis prompt**. The export places
+   thin labelled cyan wall vectors and dashed orange passage vectors over the
+   unchanged fitted artwork. They are translucent priors, not evidence that a
+   boundary is visible and are never applied to the scene background.
+4. Ask ChatGPT to return the complete geometry JSON. Every returned segment
+   identifies the source vectors it preserved, moved, changed, split or merged;
+   added segments use no source ID, and removed vectors are listed explicitly.
+   Scene Architect rejects unknown, conflicting or unaccounted source IDs. Paste
+   the result into **Geometry JSON**, or
    choose a JSON file, then **Import geometry for review**. A selected file takes
    priority over pasted text. This saves the proposal and previews it; no walls change.
 5. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
@@ -166,14 +175,18 @@ never to grid squares. Diagonal segments are supported. The prompt includes an
 image or generation identifier and dimensions which the returned JSON must preserve.
 Changing the background path or scene dimensions invalidates the analysis. Unsaved
 image/alignment changes must be applied first. Editing native walls after preview
-requires another preview before applying. Do not modify the background file in place:
+requires another preview before applying. Editing native walls after copying an
+analysis prompt invalidates its registered prior, so copy or export a fresh request
+before importing the returned JSON. Do not modify the background file in place:
 import it again so its new path invalidates old analysis.
 
 Validation checks schema, image identity, finite in-range coordinates, unique IDs,
 nonzero lengths and overlapping spans, including solid walls covering doors or
-passages. Unknown document fields are discarded. Limits: 1 MB of JSON and 2000
-segments. These checks do not prove visual accuracy, connected rooms or leak-free
-vision. Secret doors and plan-informed geometry are always marked for review.
+passages. Registered requests also require every current wall and planned open
+passage to be represented or explicitly removed. Unknown document fields are
+discarded. Limits: 1 MB of JSON and 2000 segments. These checks do not prove visual
+accuracy, connected rooms or leak-free vision. Secret doors and plan-informed
+geometry are always marked for review.
 
 There is no API service or automatic model call. The same-chat path adds one text
 exchange. The fallback adds one image-and-text exchange. The earlier laboratory
@@ -312,7 +325,7 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for this release: **45 unit tests and 72 browser assertions**
+Local verification for the current source: **49 unit tests and 73 browser assertions**
 passed. Coverage includes plan-validation correction and retry, full-map import,
 exact output dimensions, live edited
 wall overlays, omission of overlays from the uploaded background, offsets,

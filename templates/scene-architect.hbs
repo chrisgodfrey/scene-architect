@@ -100,13 +100,13 @@
 
   <section class="sa-section">
     <h2>4. Optional: fit geometry to the finished artwork</h2>
-    <p>This replaces all current walls and doors only after you import, preview and confirm the proposal. Lights, Tiles, tokens and the background stay unchanged.</p>
+    <p>Scene Architect sends the current vector walls plus room, feature and passage anchors so ChatGPT can compare them with the finished artwork instead of guessing anonymous geometry. This replaces all current walls and doors only after you import, preview and confirm the proposal. Lights, Tiles, tokens and the background stay unchanged.</p>
     {{#if analysisReady}}
       {{#if sameChatReady}}
       <h3>Recommended: use the original ChatGPT conversation</h3>
       <ol class="sa-steps">
         <li><button class="{{#if next.copySourceAnalysisPrompt}}sa-primary{{/if}}" type="button" data-action="copySourceAnalysisPrompt">Copy same-chat geometry prompt</button>.</li>
-        <li>Send it in the conversation that generated the map. Do not attach the image again.</li>
+        <li>Send it in the conversation that generated the map. The prompt includes the registered vectors; do not attach the image again.</li>
         <li>Paste or upload the returned geometry JSON below.</li>
       </ol>
       {{else}}
@@ -115,11 +115,11 @@
       <details {{#unless sameChatReady}}open{{/unless}}>
         <summary>Fallback: attach the exact fitted image</summary>
         <ol class="sa-steps">
-          <li><button class="{{#if next.exportAnalysisImage}}sa-primary{{/if}}" type="button" data-action="exportAnalysisImage">Export fitted analysis image</button>.</li>
-          <li>Attach that exported image in ChatGPT.</li>
+          <li><button class="{{#if next.exportAnalysisImage}}sa-primary{{/if}}" type="button" data-action="exportAnalysisImage">Export registered comparison image</button>.</li>
+          <li>Attach that exact exported image in ChatGPT. Its labelled cyan vectors and dashed orange passages are translucent priors, not part of the map.</li>
           <li><button type="button" data-action="copyAnalysisPrompt">Copy fitted-image analysis prompt</button> and send it with the attachment.</li>
         </ol>
-        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the applied scale and offsets.</p>
+        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the applied scale, offsets and current vector correspondence. If you edit Foundry walls after copying either prompt, copy a fresh prompt before import.</p>
       </details>
       {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
       <label>Geometry JSON<textarea name="geometryJson" rows="6" placeholder="Paste the geometry-analysis JSON here, not the original layout plan">{{geometryJson}}</textarea></label>

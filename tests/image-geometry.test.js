@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analysisPrompt,analysisFrame,validateImageGeometry,proposedWallData,replaceSceneWalls,wallSignature} from '../scripts/image-geometry.js';
+import {analysisPrompt,analysisFrame,buildRegistrationPrior,validateImageGeometry,proposedWallData,replaceSceneWalls,wallSignature} from '../scripts/image-geometry.js';
 const request={imageId:'test-image',width:1000,height:800};
 const sourceRequest={mode:'source',imageId:'generation-1',width:1200,height:900,sceneWidth:1000,sceneHeight:800,alignment:{scale:.8,offsetX:100,offsetY:-40}};
 const segment=(id,a,b,kind='wall')=>({id,a,b,kind,evidence:'visible',reviewRequired:false,note:''});
 const proposal=()=>({version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:request,walls:[segment('a',[.1,.2],[.4,.2]),segment('door',[.4,.2],[.5,.2],'door'),segment('b',[.5,.2],[.9,.2])],openings:[segment('gap',[.1,.5],[.2,.5],'open')],reviewNotes:[]});
+const registration={version:1,coordinateSpace:'normalized-image',segments:[{id:'wall-a',label:'W1',a:[.1,.2],b:[.4,.2],kind:'wall'},{id:'wall-b',label:'W2',a:[.5,.2],b:[.9,.2],kind:'wall'}],openings:[{id:'opening-1',label:'O1',a:[.1,.5],b:[.2,.5],kind:'open'}],rooms:[],features:[]};
 function mockScene() {
   let count=0;
   return {id:'s',width:1000,height:800,firstLevel:{background:{src:'map.png'}},walls:[{_id:'old1',c:[11,12,130,141],door:2,ds:2,flags:{custom:{keep:true}}},{_id:'old2',c:[130,141,222,333],door:0}],lights:[{keep:true}],tiles:[{keep:true}],flags:{},
@@ -14,13 +15,52 @@ function mockScene() {
   };
 }
 test('analysis prompt specifies the fitted image, complete network, uncertainty and source identity',()=>{
-  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[{kind:'secret'}]},request);
-  assert.match(text,/test-image/);assert.match(text,/Do not snap to grid/);assert.match(text,/complete scene wall network/);assert.match(text,/Set reviewRequired true/);
+  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[{kind:'secret'}]},{...request,registration});
+  assert.match(text,/test-image/);assert.match(text,/Do not snap to grid/);assert.match(text,/complete scene wall network/);assert.match(text,/Set reviewRequired true/);assert.match(text,/wall-a/);
 });
 test('same-chat prompt requests source coordinates without another attachment',()=>{
-  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[]},sourceRequest);
+  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[]},{...sourceRequest,registration:{...registration,coordinateSpace:'normalized-source-image'}});
   assert.match(text,/generated earlier in this conversation/);assert.match(text,/Do not ask me to attach/);
-  assert.match(text,/"version":2/);assert.match(text,/normalized-source-image/);assert.match(text,/generation-1/);
+  assert.match(text,/"version":2/);assert.match(text,/normalized-source-image/);assert.match(text,/generation-1/);assert.match(text,/Compare every source ID/);
+});
+test('registration prior deterministically carries live walls and plan semantic anchors',()=>{
+  const scene=mockScene(),plan={scene:{gridSize:100},spaces:[{id:'room',name:'Room',x:1,y:1,width:3,height:2}],openings:[{x:1,y:2,orientation:'h',length:1,kind:'open'}],features:[{id:'altar',x:2,y:1,width:1,height:1}]};
+  const prior=buildRegistrationPrior(plan,scene,{mode:'fitted'});
+  assert.deepEqual(prior.segments.map(s=>[s.id,s.label,s.kind]),[['wall-old1','W1','secret'],['wall-old2','W2','wall']]);
+  assert.deepEqual(prior.openings[0],{id:'opening-1',label:'O1',a:[.1,.25],b:[.2,.25],kind:'open'});
+  assert.deepEqual(prior.rooms[0],{id:'room-room',name:'Room',a:[.1,.125],b:[.4,.375]});
+  assert.deepEqual(prior.features[0],{id:'feature-altar',center:[.25,.1875]});
+});
+test('source registration applies the inverse alignment and clips to the source frame',()=>{
+  const scene={width:1000,height:800,walls:[{_id:'edge',c:[0,400,1000,400],door:0}]};
+  const plan={scene:{gridSize:100},spaces:[],openings:[],features:[]};
+  const prior=buildRegistrationPrior(plan,scene,sourceRequest);
+  assert.equal(prior.coordinateSpace,'normalized-source-image');
+  assert.deepEqual(prior.segments[0].a,[0,.5625]);assert.deepEqual(prior.segments[0].b,[1,.5625]);
+});
+test('registered geometry preserves complete split, merge and removal correspondence',()=>{
+  const registeredRequest={...request,registration};
+  const p={...proposal(),walls:[
+    {...segment('merged',[.1,.2],[.4,.2]),sourceIds:['wall-a','wall-b'],change:'merged'},
+    {...segment('new',[.5,.2],[.9,.2]),sourceIds:[],change:'added'}
+  ],openings:[],removedSourceIds:['opening-1']};
+  const result=validateImageGeometry(p,registeredRequest);
+  assert.deepEqual(result.walls[0].sourceIds,['wall-a','wall-b']);assert.equal(result.walls[0].change,'merged');
+  assert.deepEqual(result.removedSourceIds,['opening-1']);
+  assert.deepEqual(validateImageGeometry(result,registeredRequest),result);
+});
+test('registered geometry rejects missing, unknown, duplicated and reused removals',()=>{
+  const registeredRequest={...request,registration};
+  const valid={...proposal(),walls:[{...segment('only',[.1,.2],[.4,.2]),sourceIds:['wall-a'],change:'moved'}],openings:[],removedSourceIds:['wall-b','opening-1']};
+  for(const modify of [
+    p=>p.removedSourceIds.pop(),
+    p=>p.walls[0].sourceIds=['unknown'],
+    p=>p.removedSourceIds=['wall-b','wall-b','opening-1'],
+    p=>p.removedSourceIds=['wall-a','wall-b','opening-1'],
+    p=>{p.walls[0].change='added';}
+  ]) {
+    const p=structuredClone(valid);modify(p);assert.throws(()=>validateImageGeometry(p,registeredRequest));
+  }
 });
 test('normalized geometry accepts fenced JSON, pixel precision and diagonal segments',()=>{
   const p=proposal();p.walls.push(segment('diagonal',[.111,.333],[.777,.889]));
