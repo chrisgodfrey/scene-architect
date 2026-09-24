@@ -137,10 +137,10 @@ try {
   assert(reopened.workflow.map.generationId===generation.imageId&&reopened.element.textContent.includes('registered vectors')&&reopened.element.textContent.includes('do not attach the image again'),'Applied map retains generation identity and offers registered same-chat geometry guidance');
   assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copySourceAnalysisPrompt'&&reopened.element.querySelector('[data-action="exportAnalysisImage"]'),'Map-applied workflow recommends same-chat analysis while keeping the fitted-image fallback reachable');
   assert(reopened.element.textContent.includes('Manual wall and door edits are supported'),'Native edits show an advisory without blocking the workflow');
-  reopened.element.querySelector('[name="mapX"]').value='12';
   const uploadCount=uploads.length;
   await reopened.previewMap();await reopened.applyMap();
-  assert(uploads.length===uploadCount+1&&scene.getFlag('scene-architect','map').x===12,'Reapply reuses original source and persists new alignment');
+  const reappliedMap=scene.getFlag('scene-architect','map');
+  assert(!reopened.element.querySelector('[name="mapScale"], [name="mapX"], [name="mapY"]')&&uploads.length===uploadCount+1&&reappliedMap.scale===1&&reappliedMap.x===0&&reappliedMap.y===0,'Reapply reuses the original source with an automatic full-scene fit and no manual alignment controls');
   const background=scene.firstLevel.background.src;
   foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyMap();
   assert(scene.firstLevel.background.src===background&&uploads.length===uploadCount+1,'Cancelling application preserves the background and performs no upload');
@@ -157,7 +157,7 @@ try {
   const sourceProposal={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[sourceSeg('source-wall',[.1,.2],[.4,.2],'wall',[sourceIds[0]],'moved')],openings:[],removedSourceIds:sourceIds.slice(1),reviewNotes:[]};
   reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(sourceProposal);await reopened.importGeometry();
   const transformed=scene.getFlag('scene-architect','geometryProposal');
-  assert(transformed.origin.version===2&&transformed.walls[0].sourceIds[0]===sourceIds[0]&&Math.abs(transformed.walls[0].a[0]-(.1+12/1960))<1e-10&&!!reopened.element.querySelector('.sa-geometry-preview canvas'),'Same-chat source geometry preserves vector correspondence while transforming and previewing fitted coordinates');
+  assert(transformed.origin.version===2&&transformed.walls[0].sourceIds[0]===sourceIds[0]&&transformed.walls[0].a[0]===.1&&!!reopened.element.querySelector('.sa-geometry-preview canvas'),'Same-chat source geometry preserves vector correspondence through the automatic full-scene fit');
   assert(reopened.element.querySelector('.sa-primary').dataset.action==='applyGeometry','Previewed geometry advances the primary action to apply');
   await scene.setFlag('scene-architect','geometryProposal',null);await reopened.render();
   const request=await reopened.analysisRequest();

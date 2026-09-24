@@ -23,14 +23,14 @@ image detector. Review both results and make any remaining corrections in Foundr
 
 ## Current build and installation
 
-**0.2.0-alpha.10** tightens the wizard around a compact six-stage progress
-tracker. Completed stages show a green tick and a visible Complete label, the
-current stage is emphasized and expanded, and finished stages collapse to keep
-the active instructions in view. Text labels and icons communicate every state
-without relying on colour alone.
+**0.2.0-alpha.11** removes the unused manual map scale and offset controls. The
+map stage now has three direct actions: choose the image, preview it with live
+walls, and apply it. Scene Architect consistently fits the complete image to the
+full scene.
 
-The release retains the independently reviewable finished-map lighting pass from
-alpha.9 and the guided correction loop for rejected final geometry from alpha.8.
+The release retains the compact six-stage progress tracker from alpha.10, the
+finished-map lighting pass from alpha.9, and final-geometry correction from
+alpha.8.
 
 ### Install or update in Foundry
 
@@ -43,9 +43,9 @@ alpha.9 and the guided correction loop for rejected final geometry from alpha.8.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.10**.
+   **0.2.0-alpha.11**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.10)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.11)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -64,7 +64,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.10` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.11` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -82,24 +82,23 @@ an unpublished release. Prepare the release assets before exposing that manifest
    background. It does not create prop Tiles.
 3. **Export PNG reference** and **Copy map prompt**. Attach the PNG in ChatGPT with
    that prompt. Generate and download **one complete map image**.
-4. Choose that image under **Import and align the map**, then **Preview alignment**.
-   Yellow lines are current walls, blue lines are ordinary doors, and purple lines
-   are secret doors. Toggle the overlay off to inspect the artwork alone.
-5. If necessary, change **Scale (%)**, **Horizontal offset** or **Vertical offset**,
-   then preview again. **Apply map background** saves the source and alignment and
-   replaces the background. The coloured overlay is never baked into the map.
-6. Optionally use **Fit geometry to the finished artwork**. Start with **Copy
+4. Choose that image under **Import the map**, then **Preview the map**. Scene
+   Architect automatically fits it to the full scene. Yellow lines are current
+   walls, blue lines are ordinary doors, and purple lines are secret doors. Toggle
+   the overlay off to inspect the artwork alone, then **Apply map background**.
+   The coloured overlay is never baked into the map.
+5. Optionally use **Fit geometry to the finished artwork**. Start with **Copy
    same-chat geometry prompt** if you are still in the conversation that generated
    the unchanged map. Otherwise use the fitted-image fallback described below.
    You can also go directly to **View scene** and use Foundry's wall controls.
-7. Optionally use **Fit native lights to visible emitters**. Start with **Copy
+6. Optionally use **Fit native lights to visible emitters**. Start with **Copy
    same-chat lighting prompt** when the current conversation generated the unchanged
    map, or export the fitted lighting comparison. Import and preview the complete
    proposal, then apply it only after checking centres, bright/dim radii, effects,
    removals and warnings.
-8. In Foundry, set scene darkness high enough to see the lights. Check their
+7. In Foundry, set scene darkness high enough to see the lights. Check their
    positions and effects, wall occlusion, doors, movement and token vision.
-9. Reopen the wizard to reuse the saved original image or import a replacement.
+8. Reopen the wizard to reuse the saved original image or import a replacement.
    Applying again preserves all current native walls, doors, lights and Tiles.
 
 Settings and file selections save when you apply. Leaving the file input empty
@@ -130,14 +129,14 @@ every retry. To start over instead, use **Copy fresh layout request instead**.
 
 ## Optional: analyse the finished map and import geometry
 
-1. **Apply map background** first, including any overall scale or position changes.
+1. **Apply map background** first.
 2. If the unchanged downloaded image came from the current ChatGPT conversation,
    select **Copy same-chat geometry prompt** and send it in that conversation.
    Scene Architect includes a compact registered prior containing the current
    Foundry wall vectors, planned open passages, room rectangles and feature
    centres. ChatGPT can compare stable source IDs with the earlier source image
    instead of rediscovering anonymous rooms. Scene Architect then applies the
-   saved scale and offsets locally. You do not attach the image again.
+   saved full-scene fit locally. You do not attach the image again.
 3. The same-chat path is a convenience, not a guaranteed OpenAI capability. Use
    the **Fallback: attach the exact fitted image** workflow when you edited the
    image, changed conversations, imported an external map, or ChatGPT cannot inspect
@@ -190,8 +189,8 @@ to the fitted fallback image. Source coordinates are transformed and clipped to
 the visible scene locally. Fitted coordinates are rounded only to scene pixels,
 never to grid squares. Diagonal segments are supported. The prompt includes an
 image or generation identifier and dimensions which the returned JSON must preserve.
-Changing the background path or scene dimensions invalidates the analysis. Unsaved
-image/alignment changes must be applied first. Editing native walls after preview
+Changing the background path or scene dimensions invalidates the analysis. A newly
+selected image must be applied first. Editing native walls after preview
 requires another preview before applying. Editing native walls after copying an
 analysis prompt invalidates its registered prior, so copy or export a fresh request
 before importing the returned JSON. Do not modify the background file in place:
@@ -237,7 +236,7 @@ lighting workflow when the artwork and native lights differ.
 
 ## Optional: fit native lights to the finished map
 
-1. Apply the final map background and any scale or offset changes first.
+1. Apply the final map background first.
 2. In the original image-generation conversation, choose **Copy same-chat lighting
    prompt**. It sends registered managed-light and protected-light context while
    asking ChatGPT to inspect the image already in that conversation; do not attach
@@ -269,7 +268,7 @@ lighting workflow when the artwork and native lights differ.
 9. Use **Restore previous managed lights** for one-level undo. Lighting backup and
    restoration are separate from wall backup and restoration.
 
-Every request signs the current background, alignment, managed lights and protected
+Every request signs the current background fit, managed lights and protected
 light context. Adding, moving, resizing, recolouring, reconfiguring or deleting any
 native light after a request invalidates its proposal and requires fresh analysis.
 A protected-context signature is freshness evidence only; it never grants Scene
@@ -301,7 +300,7 @@ visual acceptance gate.
    preview and apply again. Both edits must remain; a geometry difference must not
    block the import. Open/close the doors and test token vision and collision.
 5. Close/reopen the wizard and refresh the browser. Confirm the saved image returns.
-   Try a small image offset, preview and reapply; native geometry must stay fixed.
+   Preview and reapply the saved source; native geometry must stay fixed.
 6. Export the analysis image, request geometry, import it and compare the overlays.
    Confirm that import alone changes no walls. Review the markers and apply.
 7. Request finished-map lighting, import it, and compare current and proposed
@@ -313,20 +312,20 @@ visual acceptance gate.
 
 To test the import mechanics before generating art, use the exported reference PNG
 as the input image. Its labels are part of that test image and will remain visible;
-this checks file handling and alignment only, not final visual quality.
+this checks file handling and full-scene fitting only, not final visual quality.
 
 Report the Foundry/module versions, the step that failed, expected versus actual
 behaviour and any browser-console error. For image alignment feedback, distinguish
 an overall shift/scale problem from individual rooms or doors being redrawn.
 
-## Alignment and manual edits
+## Automatic fitting and manual edits
 
 The initial fit maps the image's full rectangle to the scene's full rectangle.
 A different aspect ratio stretches the image; both preview and confirmation warn
-about this. Request the reference's aspect ratio and inspect the result. Scaling
-is centred on the canvas; positive offsets move the art right/down. Enlarging or
-shifting can crop edges, and uncovered space is filled dark. These controls cannot
-correct local changes in room shape: edit the relevant Foundry walls instead.
+about this. Request the reference's aspect ratio and inspect the result. The wizard
+does not expose manual scale or offset controls. Those global adjustments cannot
+correct local changes in room shape; use the optional geometry-fitting pass or edit
+the relevant Foundry walls instead.
 
 The overlay always reads **live wall coordinates and door types**. Geometry
 changes are advisory, not a requirement to undo your work. Exported references
@@ -341,7 +340,7 @@ referenced image files when transferring a finished scene.
 
 The wizard supports one level, zero scene padding/grid shift, and default level
 background transforms. New drafts use those settings. If changed externally,
-reset them before using the alignment preview; wall and door edits remain valid.
+reset them before previewing the map; wall and door edits remain valid.
 
 ## Existing scenes and files
 
@@ -356,8 +355,8 @@ also preserved.
 
 World uploads live under `worlds/<world-id>/scene-architect/`. Original sources and
 previous backgrounds are retained. Unused files are not automatically deleted.
-Project data lives in `flags.scene-architect.plan`; the new image source and
-alignment are in `flags.scene-architect.map`. A revision marker rejects stale
+Project data lives in `flags.scene-architect.plan`; the image source and full-scene
+fit metadata are in `flags.scene-architect.map`. A revision marker rejects stale
 saves from another wizard (best effort, not a distributed lock).
 
 Analysis state uses `flags.scene-architect.geometryRequest`, `geometryProposal`
@@ -366,8 +365,8 @@ Do not run simultaneous geometry operations from different GM clients; scene che
 and the local operation guard are best effort, not a server-side transaction.
 
 Lighting analysis uses separate `lightingRequest`, `lightingProposal` and
-`lightingBackup` flags. A valid proposal survives reopening until its background,
-alignment, managed lights or protected context changes. Applying or restoring
+`lightingBackup` flags. A valid proposal survives reopening until its background
+fit, managed lights or protected context changes. Applying or restoring
 lights clears the consumed request/proposal and retains a one-level managed-light
 backup. Lighting operations have their own local guard and never call the wall
 transaction.
@@ -409,7 +408,7 @@ results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 Local verification for the current source: **59 unit tests and 93 browser assertions**
 passed. Coverage includes plan-validation correction and retry, full-map import,
 exact output dimensions, live edited
-wall overlays, omission of overlays from the uploaded background, offsets,
+wall overlays, omission of overlays from the uploaded background, automatic fit,
 saved-source reuse, preservation of native edits and Tiles, cancelled application,
 upload failure and background rollback. Retained legacy renderer checks also run.
 Additional coverage includes analysis-image export, image identity, invalid/overlapping

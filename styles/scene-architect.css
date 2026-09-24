@@ -10,7 +10,6 @@
 .scene-architect button, .scene-architect select, .scene-architect input { min-height: 32px; }
 .scene-architect .sa-grid { display: grid; gap: 8px; margin-bottom: 8px; }
 .scene-architect .sa-grid-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
-.scene-architect .sa-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .scene-architect .sa-map-preview canvas { width: 100%; height: auto; margin-top: 12px; }
 .scene-architect .sa-geometry-preview canvas { width: 100%; height: auto; margin-top: 12px; }
 .scene-architect .sa-lighting-preview canvas { width: 100%; height: auto; margin-top: 12px; }
@@ -77,5 +76,5 @@
 @media (max-width: 760px) {
   .scene-architect .sa-shell { min-width: 0; }
   .scene-architect .sa-progress { grid-template-columns: repeat(3, 1fr); }
-  .scene-architect .sa-grid-4, .scene-architect .sa-grid-3 { grid-template-columns: 1fr; }
+  .scene-architect .sa-grid-4 { grid-template-columns: 1fr; }
 }

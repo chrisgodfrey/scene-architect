@@ -1,7 +1,7 @@
 {
   "name": "scene-architect",
   "private": true,
-  "version": "0.2.0-alpha.10",
+  "version": "0.2.0-alpha.11",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",

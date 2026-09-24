@@ -19,10 +19,10 @@ export function mapAlignment(value={}) {
 export function assertMapFrame(scene) {
   mapSize(scene);
   if((scene.padding??0)!==0||(scene.shiftX??0)!==0||(scene.shiftY??0)!==0)
-    throw new Error('Use zero scene padding and grid shift for the alignment preview. Manual wall and door edits are supported.');
+    throw new Error('Use zero scene padding and grid shift for the map preview. Manual wall and door edits are supported.');
   const t=scene.firstLevel?.textures;
   if(t&&(['offsetX','offsetY','rotation'].some(k=>(t[k]??0)!==0)||['scaleX','scaleY'].some(k=>(t[k]??1)!==1)))
-    throw new Error('Reset the level background offset, rotation and scale before using this alignment preview. Adjust the image with the controls here instead.');
+    throw new Error('Reset the level background offset, rotation and scale before previewing the map. Scene Architect fits the image to the full scene.');
 }
 
 // Colours reflect the live document, including doors changed by the GM.

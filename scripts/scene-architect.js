@@ -220,7 +220,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       else if(number===activeStep+1) {state='upcoming';label='Next';}
       return {number,short,state,className:`is-${state}`,label,complete:state==='complete',current:state==='current'};
     };
-    const steps=[step(1,'Plan'),step(2,'Generate'),step(3,'Align'),step(4,'Geometry'),step(5,'Lights'),step(6,'Test')];
+    const steps=[step(1,'Plan'),step(2,'Generate'),step(3,'Import'),step(4,'Geometry'),step(5,'Lights'),step(6,'Test')];
     const lightData=lightProposal?proposedLightData(lightProposal,scene,lightAnimationCatalog()):[];
     return {...this.workflow,hasPlan:!!p,sceneReady:!!scene,sceneNameLinked:scene?.name,referenceReady,sameChatReady,next:{[next]:true},
       steps,step1:steps[0],step2:steps[1],step3:steps[2],step4:steps[3],step5:steps[4],step6:steps[5],
@@ -243,7 +243,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       managedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated).length:0,
       protectedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated!==true).length:0,
       hasLightingBackup,
-      mapSource:map?.src,scale:(map?.scale??1)*100,offsetX:map?.x??0,offsetY:map?.y??0};
+      mapSource:map?.src};
   }
 
   syncForm() {Object.assign(this.workflow,readForm(this));}
@@ -344,8 +344,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     const src=file?URL.createObjectURL(file):this.workflow.map?.src;
     if(!src)throw new Error('Choose the complete map image first.');
     try {
-      const image=await loadImage(src),value=n=>this.element.querySelector(`[name="${n}"]`).value;
-      const alignment=mapAlignment({scale:Number(value('mapScale'))/100,x:value('mapX'),y:value('mapY')});
+      const image=await loadImage(src),alignment=mapAlignment();
       const mismatch=Math.abs((image.width/image.height)/(this.scene.width/this.scene.height)-1)>.01;
       return {image,file,alignment,mismatch};
     } finally {if(file)URL.revokeObjectURL(src);}
@@ -384,8 +383,6 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   assertAnalysisReady() {
     if(!this.workflow.map?.src)throw new Error('Apply a complete map background before analysing geometry.');
     if(this.element?.querySelector('[name="mapFile"]')?.files.length)throw new Error('Apply the selected map image before analysing geometry.');
-    const value=n=>Number(this.element?.querySelector(`[name="${n}"]`)?.value);
-    if(this.element&&[value('mapScale')/100!==this.workflow.map.scale,value('mapX')!==this.workflow.map.x,value('mapY')!==this.workflow.map.y].some(Boolean))throw new Error('Apply your changed map alignment before analysing geometry.');
     return analysisFrame(this.scene);
   }
   savedProposal() {

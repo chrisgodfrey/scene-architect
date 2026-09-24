@@ -19,7 +19,7 @@
       {{#if next.buildDraft}}build the validated plan as a Foundry draft.{{/if}}
       {{#if next.exportGuide}}export the reference PNG.{{/if}}
       {{#if next.copyMapPrompt}}copy the complete-map prompt and use it with the reference PNG.{{/if}}
-      {{#if next.previewMap}}choose the downloaded map image and preview its alignment.{{/if}}
+      {{#if next.previewMap}}choose the downloaded map image and preview it.{{/if}}
       {{#if next.copySourceAnalysisPrompt}}copy the same-chat geometry prompt, or choose the fitted-image fallback.{{/if}}
       {{#if next.exportAnalysisImage}}use the fitted-image geometry fallback.{{/if}}
       {{#if next.copyGeometryRepairPrompt}}copy the geometry correction request and send it to ChatGPT.{{/if}}
@@ -108,21 +108,16 @@
   <section class="sa-section sa-step {{step3.className}}" data-step="3">
     <details {{#if step3Open}}open{{/if}}>
       <summary class="sa-step-summary">
-        <h2><span class="sa-step-number" aria-hidden="true">{{#if step3.complete}}✓{{else}}3{{/if}}</span><span>Import and align the map</span><span class="sa-step-badge">{{step3.label}}</span></h2>
+        <h2><span class="sa-step-number" aria-hidden="true">{{#if step3.complete}}✓{{else}}3{{/if}}</span><span>Import the map</span><span class="sa-step-badge">{{step3.label}}</span></h2>
       </summary>
       <div class="sa-step-body">
     <ol class="sa-steps">
       <li><label>Choose the complete map image (PNG, JPEG or WebP, up to 30 MB)<input type="file" name="mapFile" accept="image/png,image/jpeg,image/webp"></label></li>
-      <li>Adjust scale or offsets only when needed, then <button class="{{#if next.previewMap}}sa-primary{{/if}}" type="button" data-action="previewMap">preview alignment</button>.</li>
+      <li><button class="{{#if next.previewMap}}sa-primary{{/if}}" type="button" data-action="previewMap">Preview the map</button> with the live-wall overlay.</li>
       <li>Inspect the artwork and live-wall overlay, then <button type="button" data-action="applyMap">apply map background</button>.</li>
     </ol>
     {{#if mapSource}}<p class="sa-status good">Complete: a map source is saved. Leave the file empty to reuse {{mapSource}}.</p>{{/if}}
-    <p class="hint">The full image initially fits the scene rectangle. A different aspect ratio stretches. Scale is centred; positive offsets move the image right/down. Preview again after every change.</p>
-    <div class="sa-grid sa-grid-3">
-      <label>Scale (%)<input name="mapScale" type="number" min="10" max="400" step="1" value="{{scale}}"></label>
-      <label>Horizontal offset (px)<input name="mapX" type="number" min="-8192" max="8192" value="{{offsetX}}"></label>
-      <label>Vertical offset (px)<input name="mapY" type="number" min="-8192" max="8192" value="{{offsetY}}"></label>
-    </div>
+    <p class="hint">Scene Architect fits the complete image to the scene rectangle. A different aspect ratio stretches to fit.</p>
     <label class="sa-check"><input name="showWalls" type="checkbox" checked> Show live walls and doors in preview</label>
     <p class="hint">Yellow: walls · Blue: doors · Purple: secret doors. The overlay is never baked into your map.</p>
     <p class="sa-map-warning sa-status warning" role="status"></p>
@@ -156,7 +151,7 @@
           <li>Attach that exact exported image in ChatGPT. Its labelled cyan vectors and dashed orange passages are translucent priors, not part of the map.</li>
           <li><button type="button" data-action="copyAnalysisPrompt">Copy fitted-image analysis prompt</button> and send it with the attachment.</li>
         </ol>
-        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the applied scale, offsets and current vector correspondence. If you edit Foundry walls after copying either prompt, copy a fresh prompt before import.</p>
+        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the full-scene fit and current vector correspondence. If you edit Foundry walls after copying either prompt, copy a fresh prompt before import.</p>
       </details>
       {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
       {{#if geometryRepair}}
