@@ -85,11 +85,17 @@ try {
   assert(repairApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('corrected full plan JSON'),'Copied correction request advances the primary guidance to corrected JSON import');
   dialogResults.push({json:JSON.stringify(fixture)});await repairApp.run('pastePlan');
   assert(repairApp.workflow.plan&&!repairApp.workflow.planRepair&&repairApp.element.querySelector('.sa-primary').dataset.action==='buildDraft','A valid corrected plan clears repair state and resumes the normal draft workflow');
-  const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70},walls:compileGeometry(p).map((e,i)=>({...wallDataFromSegment(e,70),_id:`old-wall-${i}`})),tiles:[],flags:{'scene-architect':{plan:p}},firstLevel:{background:{src:''},async update(data){this.background.src=data['background.src'];}},
+  const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70,distance:5,units:'ft'},walls:compileGeometry(p).map((e,i)=>({...wallDataFromSegment(e,70),_id:`old-wall-${i}`})),
+    lights:[
+      {_id:'managed-portal',id:'managed-portal',name:'Managed portal',x:700,y:600,config:{dim:8,bright:3,color:'#954aff',animation:{type:'rainbowswirl',speed:3,intensity:6,reverse:false}},flags:{'scene-architect':{generated:true,preset:'magic-portal',sourceId:'plan-light-1-portal'}}},
+      {_id:'managed-lamp',id:'managed-lamp',name:'Managed lamp',x:1200,y:800,config:{dim:6,bright:2,color:'#ffb45b',animation:{type:'flicker',speed:3,intensity:4,reverse:false}},flags:{'scene-architect':{generated:true,preset:'flickering-lamp',sourceId:'plan-light-2-lamp'}}},
+      {_id:'protected-light',id:'protected-light',name:'GM light',x:1500,y:1100,config:{dim:5,bright:1,color:'#ffffff',animation:{type:'',speed:5,intensity:5,reverse:false}},flags:{custom:{owner:true}}}
+    ],
+    tiles:[],flags:{'scene-architect':{plan:p}},firstLevel:{background:{src:''},async update(data){this.background.src=data['background.src'];}},
     getFlag(scope,key){return this.flags[scope]?.[key];},async setFlag(scope,key,value){this.flags[scope][key]=structuredClone(value);},
     async update(data){applyDocumentUpdate(this,data);},
-    async createEmbeddedDocuments(type,items,options={}){const key=type==='Wall'?'walls':'tiles';const docs=items.map(x=>{const id=options.keepId?x._id:crypto.randomUUID();return {...structuredClone(x),_id:id,id};});this[key].push(...docs);return docs;},
-    async deleteEmbeddedDocuments(type,ids){const key=type==='Wall'?'walls':'tiles';this[key]=this[key].filter(t=>!ids.includes(t.id??t._id));}};
+    async createEmbeddedDocuments(type,items,options={}){const key=type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles';const docs=items.map(x=>{const id=options.keepId?x._id:crypto.randomUUID();return {...structuredClone(x),_id:id,id};});this[key].push(...docs);return docs;},
+    async deleteEmbeddedDocuments(type,ids){const key=type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles';this[key]=this[key].filter(t=>!ids.includes(t.id??t._id));}};
   scenes.set(scene.id,scene);
   const app=new SceneArchitectApp();app.workflow=projectFromScene(scene);await app.render();
   assert(document.querySelectorAll('[name="mapFile"]').length===1&&!document.querySelector('[data-asset-id]'),'Wizard requests one complete map with no asset slots');
@@ -205,11 +211,65 @@ try {
   assert(JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background])===preserved,'Geometry replacement preserves lights, the image and existing Tiles');
   const geometryApp=new SceneArchitectApp();geometryApp.workflow=projectFromScene(scene);await geometryApp.render();
   assert(geometryApp.element.textContent.includes('Restore previous walls')&&geometryApp.element.querySelector('[name="geometryJson"]').value.includes('wall1'),'Reopening restores the geometry proposal and wall-backup action');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='previewGeometry','Geometry-proposed workflow identifies preview as its one primary action');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt','Applied geometry advances the one primary action to same-chat lighting while keeping geometry review available');
   await geometryApp.restoreGeometry();
   const stripId=wall=>{const c=structuredClone(wall);delete c.id;delete c._id;if(c.flags?.['scene-architect'])delete c.flags['scene-architect'].geometryBatch;return c;};
   assert(same(scene.walls.map(stripId),beforeReplacement.map(stripId)),'Restore action restores the previous wall coordinates, types and document settings');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='previewGeometry','Restored workflow keeps proposal review as its one primary action');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt','Restored geometry still keeps independent finished-map lighting as the one primary next action');
+  const fittedLightRequest=await geometryApp.lightingRequest('fitted');
+  assert(fittedLightRequest.width===scene.width&&fittedLightRequest.height===scene.height&&fittedLightRequest.registration.managedLights.length===2,'Fitted lighting request uses the applied scene frame and current managed-light prior');
+  exportedBlob=undefined;HTMLAnchorElement.prototype.click=function(){};URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
+  await geometryApp.exportLightingImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
+  const lightExportUrl=URL.createObjectURL(exportedBlob),lightExport=await loadImage(lightExportUrl),registeredLight=fittedLightRequest.registration.managedLights[0];
+  const lightExportCanvas=renderWholeMap(lightExport,scene,{},false),cleanLightImage=renderWholeMap(await loadImage(scene.firstLevel.background.src),scene,{},false);
+  assert(!same(pixel(lightExportCanvas,Math.round(registeredLight.center[0]*scene.width),Math.round(registeredLight.center[1]*scene.height)),pixel(cleanLightImage,Math.round(registeredLight.center[0]*scene.width),Math.round(registeredLight.center[1]*scene.height))),'Fitted lighting export overlays labelled managed and protected light context on unchanged artwork');URL.revokeObjectURL(lightExportUrl);
+  const lightRequest=await geometryApp.lightingRequest('source');
+  assert(lightRequest.registration.managedLights.length===2&&lightRequest.registration.protectedLights.length===1&&lightRequest.imageId===generation.imageId,'Same-chat lighting request registers managed lights and immutable protected context against the original generation');
+  await geometryApp.copySourceLightingPrompt();
+  assert(clipboardText.includes('tangible visible light emitters')&&clipboardText.includes('Do not ask me to attach')&&clipboardText.includes('Protected IDs are context only'),'Same-chat lighting prompt reuses the generated image and explains tangible emitters plus protected context');
+  const managedIds=lightRequest.registration.managedLights.map(light=>light.id);
+  const lightProposal={version:2,coordinateSpace:'normalized-source-image',requestId:lightRequest.requestId,source:{imageId:generation.imageId,width:200,height:100},lights:[
+    {id:'portal-fit',name:'Portal fit',center:[.3,.3],preset:'magic-portal',spread:'large',color:'#954aff',evidence:'visible',reviewRequired:false,note:'Visible portal aperture',sourceIds:[managedIds[0]],change:'moved'},
+    {id:'lamp-added',name:'Painted wall lamp',center:[.7,.6],preset:'flickering-lamp',spread:'small',color:'#ffb45b',evidence:'visible',reviewRequired:false,note:'Visible wall fixture',sourceIds:[],change:'added'}
+  ],removedSourceIds:[managedIds[1]],reviewNotes:[]};
+  const invalidLighting=structuredClone(lightProposal);invalidLighting.lights[1].preset='unknown-effect';
+  const rejectedLightingJson=JSON.stringify(invalidLighting,null,2);
+  geometryApp.element.querySelector('[name="lightingJson"]').value=rejectedLightingJson;await geometryApp.run('importLighting');
+  assert(geometryApp.lightRepair?.json===rejectedLightingJson&&geometryApp.lightRepair.error==='lamp-added: preset is invalid.'&&geometryApp.element.textContent.includes('Lighting not accepted'),'Invalid lighting retains rejected JSON and exact validator error without changing geometry or native lights');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copyLightRepairPrompt','Lighting validation failure makes its correction request the one primary action');
+  await geometryApp.run('copyLightRepairPrompt');
+  assert(clipboardText.includes('"validatorError": "lamp-added: preset is invalid."')&&clipboardText.includes('"rejectedLightingText"')&&clipboardText.includes('REGISTERED LIGHT PRIOR')&&clipboardText.includes('untrusted data'),'Lighting correction request includes the original registered contract and bounded rejection evidence');
+  const lightStateBefore=JSON.stringify([scene.lights,scene.walls,scene.tiles,scene.firstLevel.background]);
+  scene.lights.find(light=>light.id==='protected-light').x++;
+  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(lightProposal);
+  let staleProtected=false;try{await geometryApp.importLighting();}catch(e){staleProtected=e.message.includes('Native lights changed');}
+  scene.lights.find(light=>light.id==='protected-light').x--;
+  assert(staleProtected&&JSON.stringify([scene.walls,scene.tiles,scene.firstLevel.background])===JSON.stringify(JSON.parse(lightStateBefore).slice(1)),'Protected-light edits invalidate a copied request without changing geometry or non-light documents');
+  await geometryApp.copySourceLightingPrompt();
+  const freshLightRequest=scene.getFlag('scene-architect','lightingRequest');
+  const correctedLighting={...lightProposal,requestId:freshLightRequest.requestId};
+  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(correctedLighting);await geometryApp.importLighting();
+  assert(!geometryApp.lightRepair&&!!geometryApp.element.querySelector('.sa-lighting-preview canvas')&&geometryApp.element.textContent.includes('Portal fit — magic-portal, large'),'Corrected lighting clears repair state and renders labelled visual plus textual review');
+  assert(geometryApp.element.querySelector('.sa-primary').dataset.action==='applyLighting'&&geometryApp.element.querySelector('[data-next-action-text]').textContent.includes('apply the managed-light proposal'),'Lighting preview keeps the primary action and textual guidance in agreement');
+  const protectedBefore=structuredClone(scene.lights.find(light=>light.id==='protected-light')),wallsBeforeLights=JSON.stringify(scene.walls);
+  foundry.applications.api.DialogV2.confirm=async()=>false;await geometryApp.applyLighting();
+  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2,'Cancelling managed-light replacement leaves current lights unchanged');
+  foundry.applications.api.DialogV2.confirm=async()=>true;
+  scene.lights.find(light=>light.id==='protected-light').config.dim++;
+  let staleLightPreview=false;try{await geometryApp.applyLighting();}catch(e){staleLightPreview=e.message.includes('Native lights changed')||e.message.includes('protected context');}
+  scene.lights.find(light=>light.id==='protected-light').config.dim--;
+  assert(staleLightPreview,'Protected-light configuration changes invalidate an earlier lighting preview');
+  await geometryApp.copySourceLightingPrompt();
+  const finalLightRequest=scene.getFlag('scene-architect','lightingRequest');
+  const finalLighting={...lightProposal,requestId:finalLightRequest.requestId};
+  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(finalLighting);await geometryApp.importLighting();await geometryApp.applyLighting();
+  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2&&same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore),'Applying lighting replaces only Scene Architect-managed lights and preserves the protected document');
+  assert(JSON.stringify(scene.walls)===wallsBeforeLights&&scene.getFlag('scene-architect','lightingBackup').lights.length===2,'Applying lighting preserves walls and saves a durable managed-light backup');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene','Applied lighting advances the one primary action to live Foundry testing');
+  const appliedManaged=structuredClone(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated));
+  await geometryApp.restoreLighting();
+  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).some(light=>light.flags['scene-architect'].sourceId==='plan-light-1-portal')&&scene.getFlag('scene-architect','lightingBackup').lights.length===appliedManaged.length,'Restore returns the previous managed-light set and keeps one-level undo');
+  assert(same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore)&&JSON.stringify(scene.walls)===wallsBeforeLights,'Light restoration preserves protected lights and accepted geometry');
   scene.firstLevel.background.src='changed.png';
   let changedImage=false;try{await geometryApp.previewGeometry();}catch(e){changedImage=e.message.includes('analysis image has changed');}
   assert(changedImage,'Changing the background invalidates the stored geometry analysis');
@@ -237,13 +297,16 @@ try {
   assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
   assert(fresh.scene.lights[1].config.animation.type==='flicker'&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Flickering, steady and legacy non-animated lights produce complete native animation configs');
   assert(!!fresh.scene.getFlag('scene-architect','revision'),'New draft is linked and persisted for reopening');
-  await reopened.render();
-  await reopened.previewGeometry();
+  await geometryApp.render();
+  await geometryApp.copySourceLightingPrompt();
+  const screenshotRequest=scene.getFlag('scene-architect','lightingRequest');
+  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify({...lightProposal,requestId:screenshotRequest.requestId});
+  await geometryApp.importLighting();
   document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
   document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
   document.querySelector('#assembly').style.display='none';
-  const geometrySection=document.querySelector('[name="geometryJson"]').closest('.sa-section');
-  for(const section of document.querySelectorAll('.sa-section'))if(section!==geometrySection)section.style.display='none';
+  const lightingSection=document.querySelector('[name="lightingJson"]').closest('.sa-section');
+  for(const section of document.querySelectorAll('.sa-section'))if(section!==lightingSection)section.style.display='none';
   window.scrollTo(0,0);
   await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({passed:results.length,results},null,2)});
   document.title='PASS — Scene Architect';

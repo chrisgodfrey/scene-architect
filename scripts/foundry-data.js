@@ -1,5 +1,5 @@
 const MODULE_ID="scene-architect";
-const LIGHT_PRESET_DATA={
+export const LIGHT_PRESET_DATA={
   'steady-lamp':{dim:6,bright:3,color:'#ffb45b',alpha:.5},
   'flickering-lamp':{dim:6,bright:2,color:'#ffb45b',alpha:.55,animation:{type:'flicker',speed:3,intensity:4,reverse:false}},
   flame:{dim:6,bright:3,color:'#ff9b4a',alpha:.55,animation:{type:'torch',speed:3,intensity:4,reverse:false}},
@@ -9,9 +9,55 @@ const LIGHT_PRESET_DATA={
 };
 export const lightAnimationCatalog=()=>globalThis.CONFIG?.Canvas?.lightAnimations??{};
 export const lightAnimationKeys=(catalog=lightAnimationCatalog())=>Object.keys(catalog).sort();
+export const lightPresetKeys=()=>Object.keys(LIGHT_PRESET_DATA);
+export const availableLightPresetKeys=(catalog=lightAnimationCatalog())=>lightPresetKeys().filter(key=>{
+  const type=LIGHT_PRESET_DATA[key].animation?.type;
+  return !type||Object.prototype.hasOwnProperty.call(catalog,type);
+});
 export function lightIntentFromPlan(light) {
   const preset=LIGHT_PRESET_DATA[light.preset]??{};
   return {preset,animation:light.animation??preset.animation};
+}
+export function resolvedLightConfig(light,catalog=lightAnimationCatalog(),spread='medium') {
+  const {preset,animation:configured}=lightIntentFromPlan(light);
+  const factor={small:.75,medium:1,large:1.5}[spread];
+  if(!factor)throw new Error(`${light.name||'Light'}: spread must be small, medium or large.`);
+  const animation=configured?{
+    type:configured.type,
+    speed:Number(configured.speed),
+    intensity:Number(configured.intensity),
+    reverse:configured.reverse
+  }:{type:"",speed:5,intensity:5,reverse:false};
+  if(animation.type&&!Object.prototype.hasOwnProperty.call(catalog,animation.type))throw new Error(`${light.name||'Light'}: animation "${animation.type}" is not available in this Foundry installation.`);
+  return {
+    dim:Number(light.dim ?? (preset.dim??6)*factor),
+    bright:Number(light.bright ?? (preset.bright??3)*factor),
+    angle:Number(light.angle ?? 360),
+    alpha:Number(light.alpha ?? preset.alpha ?? 0.35),
+    color:light.color || preset.color || "#ffb45b",
+    attenuation:Number(light.attenuation ?? 0.5),
+    luminosity:Number(light.luminosity ?? 0.5),
+    saturation:Number(light.saturation ?? 0),
+    contrast:Number(light.contrast ?? 0),
+    shadows:Number(light.shadows ?? 0),
+    animation
+  };
+}
+export function lightDataFromIntent(light,{x,y,spread='medium',sourceId=null,analysisSources=[],change=null}={},catalog=lightAnimationCatalog()) {
+  const flags={generated:true,preset:light.preset??'legacy',sourceFeatureId:light.sourceFeatureId??null};
+  if(sourceId)flags.sourceId=sourceId;
+  if(analysisSources.length)flags.analysisSources=[...analysisSources];
+  if(change)flags.analysisChange=change;
+  return {
+    name:light.name || "Scene Architect Light",
+    x:Number(x),
+    y:Number(y),
+    walls:true,
+    vision:false,
+    hidden:false,
+    config:resolvedLightConfig(light,catalog,spread),
+    flags:{[MODULE_ID]:flags}
+  };
 }
 export function wallDataFromSegment(seg, grid) {
   const S=(globalThis.CONST ?? {}).EDGE_SENSE_TYPES ?? {NONE:0,LIMITED:10,NORMAL:20,PROXIMITY:30,DISTANCE:40};
@@ -34,35 +80,7 @@ export function wallDataFromSegment(seg, grid) {
   return base;
 }
 
-export function lightDataFromPlan(l,plan,catalog=lightAnimationCatalog()) {
-  const g=plan.scene.gridSize,{preset,animation:configured}=lightIntentFromPlan(l);
-  const animation=configured?{
-    type:configured.type,
-    speed:Number(configured.speed),
-    intensity:Number(configured.intensity),
-    reverse:configured.reverse
-  }:{type:"",speed:5,intensity:5,reverse:false};
-  if(animation.type&&!Object.prototype.hasOwnProperty.call(catalog,animation.type))throw new Error(`${l.name||'Light'}: animation "${animation.type}" is not available in this Foundry installation.`);
-  return {
-    name:l.name || "Scene Architect Light",
-    x:Number(l.x)*g,
-    y:Number(l.y)*g,
-    walls:true,
-    vision:false,
-    hidden:false,
-    config:{
-      dim:Number(l.dim ?? preset.dim ?? 6),
-      bright:Number(l.bright ?? preset.bright ?? 3),
-      angle:Number(l.angle ?? 360),
-      alpha:Number(l.alpha ?? preset.alpha ?? 0.35),
-      color:l.color || preset.color || "#ffb45b",
-      attenuation:Number(l.attenuation ?? 0.5),
-      luminosity:Number(l.luminosity ?? 0.5),
-      saturation:Number(l.saturation ?? 0),
-      contrast:Number(l.contrast ?? 0),
-      shadows:Number(l.shadows ?? 0),
-      animation
-    },
-    flags:{[MODULE_ID]:{generated:true,preset:l.preset??'legacy',sourceFeatureId:l.sourceFeatureId??null}}
-  };
+export function lightDataFromPlan(l,plan,catalog=lightAnimationCatalog(),options={}) {
+  const g=plan.scene.gridSize;
+  return lightDataFromIntent(l,{x:Number(l.x)*g,y:Number(l.y)*g,sourceId:options.sourceId??l.sourceId??null},catalog);
 }

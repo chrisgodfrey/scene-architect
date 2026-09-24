@@ -1,7 +1,7 @@
 <div class="sa-shell">
   <section class="sa-section">
     <h2>Scene Architect</h2>
-    <p>Work through the numbered steps in order: plan, generate, align, optionally refine geometry, then test in Foundry.</p>
+    <p>Work through the numbered steps in order: plan, generate, align, optionally fit geometry and lights to the artwork, then test in Foundry.</p>
     <p class="sa-status sa-current" role="status">
       <strong>Next:</strong> <span data-next-action-text>
       {{#if next.copyLayoutPrompt}}describe the scene, then copy the layout request.{{/if}}
@@ -16,6 +16,12 @@
       {{#if next.copyGeometryRepairPrompt}}copy the geometry correction request and send it to ChatGPT.{{/if}}
       {{#if next.importGeometry}}import the corrected complete geometry JSON.{{/if}}
       {{#if next.previewGeometry}}review the proposed geometry overlay before applying it.{{/if}}
+      {{#if next.copySourceLightingPrompt}}copy the same-chat lighting prompt, or choose the fitted-image fallback.{{/if}}
+      {{#if next.exportLightingImage}}export the fitted-image lighting comparison.{{/if}}
+      {{#if next.copyLightRepairPrompt}}copy the lighting correction request and send it to ChatGPT.{{/if}}
+      {{#if next.importLighting}}import the complete lighting JSON for review.{{/if}}
+      {{#if next.previewLighting}}review the proposed light centres and radii before applying them.{{/if}}
+      {{#if next.viewScene}}test the fitted map, geometry and managed lights in Foundry.{{/if}}
       </span>
     </p>
     <div class="sa-actions sa-wrap">
@@ -75,7 +81,7 @@
     <ol class="sa-steps">
       <li><button class="{{#if next.exportGuide}}sa-primary{{/if}}" type="button" data-action="exportGuide">Export PNG reference</button>.</li>
       <li><button class="{{#if next.copyMapPrompt}}sa-primary{{/if}}" type="button" data-action="copyMapPrompt">Copy complete-map prompt</button>. Attach the exported reference in the same ChatGPT conversation.</li>
-      <li>Generate and download one complete map image. Keep that conversation open if you want to use the no-reattachment geometry shortcut in step 4.</li>
+      <li>Generate and download one complete map image. Keep that conversation open if you want to use the no-reattachment geometry and lighting shortcuts in steps 4 and 5.</li>
     </ol>
     <p class="hint">The reference guides architecture, feature placement and visible light sources. Artwork can flow across grid boundaries. Image generation may shift walls or doors, so review the result in Foundry.</p>
   </section>
@@ -102,7 +108,7 @@
 
   <section class="sa-section">
     <h2>4. Optional: fit geometry to the finished artwork</h2>
-    <p>Scene Architect sends the current vector walls plus room, feature and passage anchors so ChatGPT can compare them with the finished artwork instead of guessing anonymous geometry. This replaces all current walls and doors only after you import, preview and confirm the proposal. Lights, Tiles, tokens and the background stay unchanged.</p>
+    <p>Scene Architect sends the current vector walls plus room, feature and passage anchors so ChatGPT can compare them with the finished artwork instead of guessing anonymous geometry. This replaces all current walls and doors only after you import, preview and confirm the proposal. Lights, Tiles, tokens and the background stay unchanged. You may skip this optional step and continue to lighting.</p>
     {{#if analysisReady}}
       {{#if sameChatReady}}
       <h3>Recommended: use the original ChatGPT conversation</h3>
@@ -156,14 +162,71 @@
   </section>
 
   <section class="sa-section">
-    <h2>5. Test and refine in Foundry</h2>
+    <h2>5. Optional: fit native lights to visible emitters</h2>
+    <p>Scene Architect compares its managed lights with tangible lamps, flames, portals and machines in the finished artwork. ChatGPT suggests centres, semantic presets and bounded spread classes; Scene Architect supplies complete Foundry settings and validates installed effects. Manual and other-module lights are protected context and are never replaced.</p>
+    {{#if analysisReady}}
+      {{#if sameChatReady}}
+      <h3>Recommended: use the original ChatGPT conversation</h3>
+      <ol class="sa-steps">
+        <li><button class="{{#if next.copySourceLightingPrompt}}sa-primary{{/if}}" type="button" data-action="copySourceLightingPrompt">Copy same-chat lighting prompt</button>.</li>
+        <li>Send it in the conversation that generated the map. The prompt includes managed and protected light context; do not attach the image again.</li>
+        <li>Paste or upload the complete lighting JSON below.</li>
+      </ol>
+      {{else}}
+      <p class="sa-status warning">The applied map is not linked to a generation request, so the same-chat lighting shortcut is unavailable.</p>
+      {{/if}}
+      <details {{#unless sameChatReady}}open{{/unless}}>
+        <summary>Fallback: attach the exact fitted lighting comparison</summary>
+        <ol class="sa-steps">
+          <li><button class="{{#if next.exportLightingImage}}sa-primary{{/if}}" type="button" data-action="exportLightingImage">Export light comparison image</button>.</li>
+          <li>Attach that exact image in ChatGPT. Labels beginning M are Scene Architect-managed lights; P labels are protected lights that must remain unchanged.</li>
+          <li><button type="button" data-action="copyLightingPrompt">Copy fitted-image lighting prompt</button> and send it with the attachment.</li>
+        </ol>
+        <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or when ChatGPT cannot inspect the earlier image. If any native light changes after the request, copy or export a fresh request before import.</p>
+      </details>
+      <p class="hint">Ask for tangible emitters only. Bright reflections and baked illumination do not need separate native lights. Current context: {{managedLightCount}} managed and {{protectedLightCount}} protected lights.</p>
+      {{#if lightingWarning}}<p class="sa-status warning">{{lightingWarning}}</p>{{/if}}
+      {{#if lightRepair}}
+      <div class="sa-status warning" role="status">
+        <p><strong>Lighting not accepted:</strong> {{lightRepair.error}}</p>
+        <p>The rejected JSON is retained below. Native lights and accepted geometry have not changed.</p>
+        <div class="sa-actions sa-wrap">
+          <button class="{{#if next.copyLightRepairPrompt}}sa-primary{{/if}}" type="button" data-action="copyLightRepairPrompt">Copy lighting correction request</button>
+          <button class="{{#if next.importLighting}}sa-primary{{/if}}" type="button" data-action="importLighting">Import corrected lighting JSON</button>
+          {{#if sameChatReady}}<button type="button" data-action="copySourceLightingPrompt">Copy fresh lighting request instead</button>{{else}}<button type="button" data-action="copyLightingPrompt">Copy fresh lighting request instead</button>{{/if}}
+        </div>
+        <p class="hint">Send the correction request in the same ChatGPT conversation. It contains the exact validator error, rejected response and original registered-light contract.</p>
+      </div>
+      {{/if}}
+      <label>Lighting JSON<textarea name="lightingJson" rows="6" placeholder="Paste the finished-map lighting JSON here">{{lightingJson}}</textarea></label>
+      <label>Or choose a JSON file (takes priority over pasted text)<input type="file" name="lightingFile" accept=".json,application/json"></label>
+      {{#unless lightRepair}}<button type="button" data-action="importLighting">Import lighting for review</button>{{/unless}}
+      {{#if hasLightProposal}}
+      <p class="sa-status good">Complete: {{lightingSummary}}.</p>
+      {{#if lightRegistrationReviewNote}}<p class="sa-status warning">{{lightRegistrationReviewNote}}</p>{{/if}}
+      {{#each lightingNotes}}<p class="sa-status warning">{{this}}</p>{{/each}}
+      {{#each lightingReview}}<p class="sa-status warning">{{this}}</p>{{/each}}
+      <label>Light overlay<select name="lightingOverlay"><option value="proposed">Proposed lights</option><option value="current">Current managed lights</option><option value="both">Current and proposed</option><option value="none">Artwork only</option></select></label>
+      <p class="hint">Current: yellow solid bright and dashed dim radii. Proposed: purple solid bright and dotted dim radii. Labels identify every centre; the summary below provides the same information in text.</p>
+      <ul class="sa-lighting-details">{{#each lightingDetails}}<li>{{this}}</li>{{/each}}</ul>
+      <label class="sa-check"><input type="checkbox" name="lightingReviewed"> I reviewed proposed centres, radii, effects, removals and warnings and accept them as a starting point.</label>
+      <div class="sa-actions"><button class="{{#if next.previewLighting}}sa-primary{{/if}}" type="button" data-action="previewLighting">Preview lighting</button><button type="button" data-action="applyLighting">Apply managed lights</button></div>
+      <div class="sa-lighting-preview"></div>
+      <p class="hint">Applying saves only the previous Scene Architect-managed lights for restoration. Protected lights and all geometry remain unchanged.</p>
+      {{/if}}
+    {{else}}<p class="hint">Apply the complete map background in step 3 to enable finished-map light fitting.</p>{{/if}}
+    {{#if hasLightingBackup}}<button type="button" data-action="restoreLighting">Restore previous managed lights</button>{{/if}}
+  </section>
+
+  <section class="sa-section">
+    <h2>6. Test and refine in Foundry</h2>
     <ol class="sa-steps">
-      <li><button type="button" data-action="viewScene">View scene</button> and set scene darkness high enough to see lights clearly.</li>
+      <li><button class="{{#if next.viewScene}}sa-primary{{/if}}" type="button" data-action="viewScene">View scene</button> and set scene darkness high enough to see lights clearly.</li>
       <li>Check that each lamp, flame or magical source is centred on the feature it represents and has the intended effect.</li>
       <li>Test wall occlusion, doors, movement and token vision with a player-controlled token.</li>
       <li>Use Foundry's native wall and light controls for final artistic adjustments.</li>
     </ol>
-    <p class="sa-footer-note">Reapplying a map changes only the background and preserves native walls, lights, Tiles and tokens. Applying analysed geometry changes only walls and doors and provides one-level restore.</p>
+    <p class="sa-footer-note">Reapplying a map changes only the background. Applying analysed geometry changes only walls and doors. Applying analysed lighting changes only Scene Architect-managed lights. Geometry and lighting each provide an independent one-level restore.</p>
   </section>
   {{/if}}
 </div>

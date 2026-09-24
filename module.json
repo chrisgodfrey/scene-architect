@@ -1,11 +1,11 @@
 {
   "id": "scene-architect",
   "title": "Scene Architect",
-  "description": "Complete illustrated maps with optional image-derived geometry, review overlays and restorable walls for Foundry VTT v14.",
-  "version": "0.2.0-alpha.8",
+  "description": "Complete illustrated maps with optional image-fitted walls and managed lights, review overlays, and independent restore for Foundry VTT v14.",
+  "version": "0.2.0-alpha.9",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.8/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.9/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"

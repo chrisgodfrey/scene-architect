@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { normalizePlan, validatePlan, planWarnings } from '../scripts/plan.js';
 import { compileGeometry } from '../scripts/geometry.js';
 import { migrateArt, validateArt, usedAssets, artworkRequests } from '../scripts/art-manifest.js';
-import { lightDataFromPlan, wallDataFromSegment } from '../scripts/foundry-data.js';
+import { availableLightPresetKeys, lightDataFromPlan, resolvedLightConfig, wallDataFromSegment } from '../scripts/foundry-data.js';
 import { geometryConflict, projectFromScene, saveProject, propTileData, applyRenderedArt } from '../scripts/project.js';
 import { fitRect, renderSceneArt } from '../scripts/renderer.js';
 import { applyDocumentUpdate } from './mock-update.js';
@@ -35,10 +35,15 @@ test('semantic lights link to visible sources and preserve bounded animation ove
   }];
   const checked=validatePlan(normalizePlan(p)),source=checked.features.find(f=>f.id==='instantiator'),light=checked.lights[0];
   assert.equal(light.x,source.x+source.width/2);assert.equal(light.y,source.y+source.height/2);
-  const data=lightDataFromPlan(light,checked,{rainbowswirl:{}});
+  const data=lightDataFromPlan(light,checked,{rainbowswirl:{}},{sourceId:'plan-light-1-portal'});
   assert.equal(data.x,light.x*checked.scene.gridSize);assert.equal(data.config.dim,10);assert.equal(data.config.color,'#954aff');
   assert.deepEqual(data.config.animation,{type:'rainbowswirl',speed:6,intensity:8,reverse:true});
   assert.equal(data.flags['scene-architect'].sourceFeatureId,'instantiator');
+  assert.equal(data.flags['scene-architect'].sourceId,'plan-light-1-portal');
+  const small=resolvedLightConfig({name:'Suggested portal',preset:'magic-portal'},{rainbowswirl:{}},'small');
+  assert.equal(small.dim,6);assert.equal(small.bright,2.25);
+  assert(!availableLightPresetKeys({flicker:{}}).includes('magic-portal'));
+  assert(availableLightPresetKeys({flicker:{}}).includes('flickering-lamp'));
 });
 test('legacy animations retain their meaning and unavailable effects fail explicitly',()=>{
   const p=plan();p.lights=[{name:'Old lamp',x:4,y:5,animation:'flicker'}];

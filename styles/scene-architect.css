@@ -10,6 +10,9 @@
 .scene-architect .sa-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .scene-architect .sa-map-preview canvas { width: 100%; height: auto; margin-top: 12px; }
 .scene-architect .sa-geometry-preview canvas { width: 100%; height: auto; margin-top: 12px; }
+.scene-architect .sa-lighting-preview canvas { width: 100%; height: auto; margin-top: 12px; }
+.scene-architect .sa-lighting-details { margin: 8px 0; padding-left: 24px; }
+.scene-architect .sa-lighting-details li { margin: 4px 0; }
 .scene-architect .sa-map-warning:empty { display: none; }
 .scene-architect .sa-actions { display: flex; gap: 8px; margin-top: 10px; }
 .scene-architect .sa-wrap { flex-wrap: wrap; }

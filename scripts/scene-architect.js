@@ -1,4 +1,4 @@
-import { wallDataFromSegment, lightDataFromPlan, lightAnimationCatalog, lightAnimationKeys } from "./foundry-data.js";
+import { wallDataFromSegment, lightDataFromPlan, lightAnimationCatalog, lightAnimationKeys, availableLightPresetKeys } from "./foundry-data.js";
 import { normalizePlan, validatePlan, planWarnings } from "./plan.js";
 import { compileGeometry } from "./geometry.js";
 import { migrateArt, validateArt } from "./art-manifest.js";
@@ -8,6 +8,7 @@ import { geometryConflict, projectFromScene, saveProject } from "./project.js";
 import {renderGuide, wholeMapPrompt, renderWholeMap, mapAlignment, assertMapFrame, applyWholeMap} from './whole-map.js';
 
 import {analysisFrame, analysisPrompt, backgroundPath, buildRegistrationPrior, validateImageGeometry, proposedWallData, drawProposal, drawRegistrationPrior, wallSignature, replaceSceneWalls} from './image-geometry.js';
+import {buildLightRegistrationPrior, buildLightRepairPrompt, drawLightComparison, drawLightRegistrationPrior, lightAnalysisPrompt, managedLightSignature, proposedLightData, protectedLightSignature, replaceSceneLights, validateImageLighting} from './image-lighting.js';
 
 const MODULE_ID = "scene-architect";
 const MODULE_TITLE = "Scene Architect";
@@ -162,7 +163,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   static DEFAULT_OPTIONS={
     id:'scene-architect-app',classes:['scene-architect'],tag:'div',position:{width:820,height:850},
     window:{title:'Scene Architect — complete map',icon:'fa-solid fa-drafting-compass',resizable:true},
-    actions:Object.fromEntries(['copyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','copySourceAnalysisPrompt','exportAnalysisImage','copyAnalysisPrompt','copyGeometryRepairPrompt','importGeometry','previewGeometry','applyGeometry','restoreGeometry','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
+    actions:Object.fromEntries(['copyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','copySourceAnalysisPrompt','exportAnalysisImage','copyAnalysisPrompt','copyGeometryRepairPrompt','importGeometry','previewGeometry','applyGeometry','restoreGeometry','copySourceLightingPrompt','exportLightingImage','copyLightingPrompt','copyLightRepairPrompt','importLighting','previewLighting','applyLighting','restoreLighting','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
   };
   static PARTS={main:{template:`modules/${MODULE_ID}/templates/scene-architect.hbs`}};
 
@@ -170,6 +171,8 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     super(options);
     this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};
     this.geometryRepair=null;
+    this.lightRepair=null;
+    this.lightPreview=null;
     this.busy=false;
   }
 
@@ -185,14 +188,22 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   get scene() {return game.scenes.get(this.workflow.sceneId);}
   get plan() {return this.workflow.plan;}
   async _prepareContext() {
-    const p=this.plan,repair=this.workflow.planRepair,geometryRepair=this.geometryRepair,scene=this.scene,map=this.workflow.map;
-    let proposal=null,analysisWarning='';
+    const p=this.plan,repair=this.workflow.planRepair,geometryRepair=this.geometryRepair,lightRepair=this.lightRepair,scene=this.scene,map=this.workflow.map;
+    let proposal=null,analysisWarning='',lightProposal=null,lightingWarning='';
     if(scene?.getFlag(MODULE_ID,'geometryProposal')) {
       try {proposal=this.savedProposal();} catch(e) {analysisWarning=e.message;}
     }
+    if(scene?.getFlag(MODULE_ID,'lightingProposal')) {
+      try {lightProposal=this.savedLightProposal();} catch(e) {lightingWarning=e.message;}
+    }
     const review=proposal?[...proposal.walls,...proposal.openings].filter(s=>s.reviewRequired):[];
+    const lightReview=lightProposal?.lights.filter(light=>light.reviewRequired)??[];
     const referenceReady=!!this.workflow.generation?.referenceExportedAt,sameChatReady=!!map?.generationId;
-    const next=repair?(repair.promptCopiedAt?'pastePlan':'copyPlanRepairPrompt'):!p?'copyLayoutPrompt':!scene?'buildDraft':!map?.src?(!referenceReady?'exportGuide':!this.workflow.generation.promptCopiedAt?'copyMapPrompt':'previewMap'):geometryRepair?(geometryRepair.promptCopiedAt?'importGeometry':'copyGeometryRepairPrompt'):!proposal?(sameChatReady?'copySourceAnalysisPrompt':'exportAnalysisImage'):'previewGeometry';
+    const lightingRequest=scene?.getFlag(MODULE_ID,'lightingRequest'),hasLightingBackup=!!scene?.getFlag(MODULE_ID,'lightingBackup'),lightingStarted=!!(lightProposal||lightRepair||lightingRequest||hasLightingBackup||scene?.getFlag(MODULE_ID,'geometryBackup'));
+    const lightingNext=lightRepair?(lightRepair.promptCopiedAt?'importLighting':'copyLightRepairPrompt'):lightProposal?'previewLighting':lightingRequest?.promptCopiedAt&&!lightingWarning?'importLighting':hasLightingBackup?'viewScene':sameChatReady?'copySourceLightingPrompt':'exportLightingImage';
+    const geometryNext=geometryRepair?(geometryRepair.promptCopiedAt?'importGeometry':'copyGeometryRepairPrompt'):!proposal?(sameChatReady?'copySourceAnalysisPrompt':'exportAnalysisImage'):'previewGeometry';
+    const next=repair?(repair.promptCopiedAt?'pastePlan':'copyPlanRepairPrompt'):!p?'copyLayoutPrompt':!scene?'buildDraft':!map?.src?(!referenceReady?'exportGuide':!this.workflow.generation.promptCopiedAt?'copyMapPrompt':'previewMap'):geometryRepair?geometryNext:lightingStarted?lightingNext:geometryNext;
+    const lightData=lightProposal?proposedLightData(lightProposal,scene,lightAnimationCatalog()):[];
     return {...this.workflow,hasPlan:!!p,planStepOpen:!p||!!repair,sceneReady:!!scene,sceneNameLinked:scene?.name,referenceReady,sameChatReady,next:{[next]:true},
       projects:[...game.scenes].filter(s=>s.getFlag(MODULE_ID,'plan')).map(s=>({id:s.id,name:s.name,selected:s.id===scene?.id})),
       editedGeometry:scene&&p?geometryConflict(scene,p):null,
@@ -204,21 +215,30 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       geometryReview:review.map(s=>`${s.id}: ${s.note||'Check this segment against the artwork.'}`),geometryNotes:proposal?.reviewNotes??[],
       registrationReviewNote:proposal?.registrationReviewNote,
       hasGeometryBackup:!!scene?.getFlag(MODULE_ID,'geometryBackup'),
+      lightingJson:lightRepair?.json??(lightProposal?JSON.stringify(lightProposal,null,2):''),hasLightProposal:!!lightProposal,lightingWarning,lightRepair,
+      lightingSummary:lightProposal?`${lightProposal.lights.length} proposed lights · ${lightProposal.removedSourceIds.length} managed removals · ${lightReview.length} review markers`:'',
+      lightingReview:lightReview.map(light=>`${light.name}: ${light.note||'Check this source and effect against the artwork.'}`),lightingNotes:lightProposal?.reviewNotes??[],
+      lightRegistrationReviewNote:lightProposal?.registrationReviewNote,
+      lightingDetails:lightProposal?.lights.map((light,index)=>{const data=lightData[index];return `${light.name} — ${light.preset}, ${light.spread}; bright ${data.config.bright}, dim ${data.config.dim} ${scene.grid?.units??p.scene.units}; ${data.config.color}; animation ${data.config.animation.type||'steady'}; ${light.evidence}; ${light.note||'no additional review note'}.`;})??[],
+      managedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated).length:0,
+      protectedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated!==true).length:0,
+      hasLightingBackup,
       mapSource:map?.src,scale:(map?.scale??1)*100,offsetX:map?.x??0,offsetY:map?.y??0};
   }
 
   syncForm() {Object.assign(this.workflow,readForm(this));}
   usePlan(p) {
     this.geometryRepair=null;
+    this.lightRepair=null;this.lightPreview=null;
     this.workflow={plan:p,planRepair:null,sceneId:null,revision:null,map:null,generation:null,sceneName:p.scene.name,columns:p.scene.columns,rows:p.scene.rows,gridSize:p.scene.gridSize,brief:p.scene.description};
   }
   async persist() {if(this.scene)await saveProject(this.scene,this.workflow);}
   async reopen() {
     const id=this.element.querySelector('[name="projectId"]').value;
     if(!id)return;
-    this.geometryRepair=null;this.workflow=projectFromScene(game.scenes.get(id));await this.render();
+    this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.workflow=projectFromScene(game.scenes.get(id));await this.render();
   }
-  async newProject() {this.geometryRepair=null;this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};await this.render();}
+  async newProject() {this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};await this.render();}
   async copyLayoutPrompt() {this.syncForm();await copyText(buildLayoutPrompt(this.workflow,lightAnimationKeys()));}
   async copyPlanRepairPrompt() {
     this.syncForm();
@@ -250,7 +270,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     if(!this.plan)return;
     const p=validateArt(validatePlan(this.plan)),g=p.scene.gridSize;
     const walls=compileGeometry(p).map(s=>wallDataFromSegment(s,g));
-    const lights=p.lights.map(l=>lightDataFromPlan(l,p,lightAnimationCatalog()));
+    const lights=p.lights.map((l,index)=>lightDataFromPlan(l,p,lightAnimationCatalog(),{sourceId:`plan-light-${index+1}-${slugify(l.name||'light')}`}));
     const scene=await Scene.implementation.create({name:p.scene.name,width:p.scene.columns*g,height:p.scene.rows*g,padding:0,navigation:false,tokenVision:true,
       grid:{type:CONST.GRID_TYPES.SQUARE,size:g,distance:p.scene.distance,units:p.scene.units,alpha:.25,color:'#888888'},
       flags:{[MODULE_ID]:{plan:structuredClone(p),createdAt:Date.now()}}});
@@ -452,6 +472,127 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     if(!await DialogV2.confirm({window:{title:'Restore previous walls?'},content:'<p>This replaces ALL current walls and doors, including edits made since the last geometry operation, with the saved snapshot. The current walls become the next restore snapshot. Background, lights, Tiles and tokens remain unchanged.</p>',rejectClose:false}))return;
     await replaceSceneWalls(scene,backup.walls,signature,frame,{restoring:true});
     this.geometryPreview=null;await this.render();ui.notifications.info('Previous walls restored.');
+  }
+
+  savedLightProposal() {
+    const request=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!request||request.frame!==analysisFrame(this.scene))throw new Error('The lighting analysis image has changed. Copy or export a fresh lighting request.');
+    if(request.managedSignature!==managedLightSignature(this.scene)||request.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Native lights changed after this lighting request. Copy or export a fresh lighting request.');
+    return validateImageLighting(this.scene.getFlag(MODULE_ID,'lightingProposal'),request,lightAnimationCatalog());
+  }
+  async lightingRequest(mode='fitted') {
+    const frame=this.assertAnalysisReady();
+    if(mode==='source'&&!this.workflow.map.generationId)throw new Error('This map is not linked to a generation request. Use the fitted-image lighting fallback.');
+    const source=mode==='source',managedSignature=managedLightSignature(this.scene),protectedSignature=protectedLightSignature(this.scene),desired={
+      mode:source?'source':'fitted',
+      requestId:crypto.randomUUID(),
+      imageId:source?this.workflow.map.generationId:crypto.randomUUID(),
+      frame,
+      managedSignature,
+      protectedSignature,
+      width:source?this.workflow.map.width:this.scene.width,
+      height:source?this.workflow.map.height:this.scene.height,
+      sceneWidth:this.scene.width,
+      sceneHeight:this.scene.height,
+      alignment:source?{scale:this.workflow.map.scale,offsetX:this.workflow.map.x,offsetY:this.workflow.map.y}:undefined
+    };
+    desired.registration=buildLightRegistrationPrior(this.scene,desired);
+    let request=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    const same=request&&request.mode===desired.mode&&request.frame===desired.frame&&request.managedSignature===managedSignature&&request.protectedSignature===protectedSignature&&request.width===desired.width&&request.height===desired.height&&JSON.stringify(request.alignment)===JSON.stringify(desired.alignment);
+    if(!same) {
+      request=desired;
+      this.lightRepair=null;this.lightPreview=null;
+      await this.scene.setFlag(MODULE_ID,'lightingRequest',request);
+      await this.scene.setFlag(MODULE_ID,'lightingProposal',null);
+    }
+    return request;
+  }
+  async copySourceLightingPrompt() {
+    this.lightRepair=null;
+    const request=await this.lightingRequest('source');
+    await copyText(lightAnalysisPrompt(this.plan,request,availableLightPresetKeys(lightAnimationCatalog())));
+    request.promptCopiedAt=Date.now();
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',request);
+    await this.render();
+  }
+  async exportLightingImage() {
+    const request=await this.lightingRequest('fitted'),image=await loadImage(backgroundPath(this.scene));
+    const blob=await canvasBlob(drawLightRegistrationPrior(renderWholeMap(image,this.scene,{},false),request.registration,this.scene));
+    if(request.frame!==analysisFrame(this.scene)||request.managedSignature!==managedLightSignature(this.scene)||request.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Background or native lights changed while exporting. Try again.');
+    downloadBlob(`${slugify(this.scene.name)}-analyse-lights-${request.imageId}.png`,blob);
+  }
+  async copyLightingPrompt() {
+    this.lightRepair=null;
+    const request=await this.lightingRequest('fitted');
+    await copyText(lightAnalysisPrompt(this.plan,request,availableLightPresetKeys(lightAnimationCatalog())));
+    request.promptCopiedAt=Date.now();
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',request);
+    await this.render();
+  }
+  async copyLightRepairPrompt() {
+    const repair=this.lightRepair,request=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!repair||!request)throw new Error('There is no rejected lighting response to repair.');
+    await copyText(buildLightRepairPrompt(this.plan,request,repair,availableLightPresetKeys(lightAnimationCatalog())));
+    repair.promptCopiedAt=Date.now();
+    await this.render();
+  }
+  async importLighting() {
+    const frame=this.assertAnalysisReady(),request=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!request||request.frame!==frame)throw new Error('Copy a lighting request or export the lighting comparison image first.');
+    if(request.managedSignature!==managedLightSignature(this.scene)||request.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Native lights changed after this lighting request. Copy or export a fresh lighting request.');
+    const input=this.element.querySelector('[name="lightingJson"]').value;
+    const file=this.element.querySelector('[name="lightingFile"]').files[0];
+    if(file&&file.size>1_000_000)throw new Error('Lighting JSON exceeds 1 MB.');
+    const candidate=file?await file.text():input;
+    let proposal;
+    try {proposal=validateImageLighting(candidate,request,lightAnimationCatalog());}
+    catch(error) {
+      this.lightRepair={json:candidate,error:error instanceof Error?error.message:String(error)};
+      await this.render();
+      throw error;
+    }
+    if(frame!==analysisFrame(this.scene)||request.managedSignature!==managedLightSignature(this.scene)||request.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Background or native lights changed during import. Request fresh lighting.');
+    await this.scene.setFlag(MODULE_ID,'lightingProposal',proposal);
+    this.lightRepair=null;this.lightPreview=null;await this.render();await this.previewLighting();
+    ui.notifications.info('Lighting proposal saved for review. No native lights have changed.');
+  }
+  async previewLighting() {
+    this.lightPreview=null;
+    const frame=this.assertAnalysisReady(),proposal=this.savedLightProposal(),managedSignature=managedLightSignature(this.scene),protectedSignature=protectedLightSignature(this.scene);
+    const image=await loadImage(backgroundPath(this.scene));
+    if(frame!==analysisFrame(this.scene)||managedSignature!==managedLightSignature(this.scene)||protectedSignature!==protectedLightSignature(this.scene))throw new Error('Scene lighting changed during preview. Request fresh lighting.');
+    const mode=this.element.querySelector('[name="lightingOverlay"]').value;
+    const canvas=renderWholeMap(image,this.scene,{},false);
+    drawLightComparison(canvas,proposal,this.scene,{current:mode==='current'||mode==='both',proposed:mode==='proposed'||mode==='both'});
+    canvas.setAttribute('aria-label','Current and proposed light centres with bright and dim radii');
+    this.element.querySelector('.sa-lighting-preview').replaceChildren(canvas);
+    if(mode==='proposed'||mode==='both')this.lightPreview={frame,managedSignature,protectedSignature,json:JSON.stringify(proposal)};
+    this.setNextAction('applyLighting','inspect the proposed light centres and radii, then apply the managed-light proposal.');
+  }
+  async applyLighting() {
+    const frame=this.assertAnalysisReady(),proposal=this.savedLightProposal(),preview=this.lightPreview;
+    if(this.element.querySelector('[name="lightingFile"]').files.length||this.element.querySelector('[name="lightingJson"]').value.trim()!==JSON.stringify(proposal,null,2))throw new Error('Import your edited lighting JSON before applying.');
+    if(!preview||preview.frame!==frame||preview.managedSignature!==managedLightSignature(this.scene)||preview.protectedSignature!==protectedLightSignature(this.scene)||preview.json!==JSON.stringify(proposal))throw new Error('Preview the proposed lighting again before applying; the scene, protected context or proposal may have changed.');
+    const review=proposal.lights.filter(light=>light.reviewRequired);
+    if((review.length||proposal.registrationReviewRequired)&&!this.element.querySelector('[name="lightingReviewed"]').checked)throw new Error('Review the marked light sources and managed-source warnings, then check the acknowledgement before applying.');
+    const managedCount=[...(this.scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated).length,protectedCount=[...(this.scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated!==true).length;
+    if(!await DialogV2.confirm({window:{title:'Replace Scene Architect-managed lights?'},content:`<p>Replace ${managedCount} Scene Architect-managed lights with ${proposal.lights.length} proposed lights? ${proposal.removedSourceIds.length} managed source IDs are proposed for removal.</p><p>${protectedCount} manual or other-module lights are protected and stay unchanged. Walls, background, Tiles and tokens also stay unchanged.</p><p>The previous managed lights will be saved under Restore previous lights. ${review.length} marked lights${proposal.registrationReviewRequired?' and the source-accounting warning':''} still need your judgement.</p>`,rejectClose:false}))return;
+    await replaceSceneLights(this.scene,proposedLightData(proposal,this.scene,lightAnimationCatalog()),preview.managedSignature,preview.protectedSignature,frame);
+    await this.scene.setFlag(MODULE_ID,'lightingProposal',null);
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',null);
+    this.lightPreview=null;await this.render();
+    ui.notifications.info('Proposed managed lights applied. Test darkness, animation, wall occlusion and token vision. Restore previous lights is available.');
+  }
+  async restoreLighting() {
+    const scene=this.scene,backup=scene.getFlag(MODULE_ID,'lightingBackup');
+    if(!backup||!Array.isArray(backup.lights))throw new Error('No managed-light backup is available.');
+    const frame=analysisFrame(scene),managedSignature=managedLightSignature(scene),protectedSignature=protectedLightSignature(scene);
+    if(backup.width!==scene.width||backup.height!==scene.height)throw new Error('Scene dimensions changed since the backup. Restore its dimensions before restoring lights.');
+    if(!await DialogV2.confirm({window:{title:'Restore previous managed lights?'},content:'<p>This replaces only Scene Architect-managed lights with the saved snapshot. The current managed lights become the next restore snapshot. Manual and other-module lights, walls, background, Tiles and tokens remain unchanged.</p>',rejectClose:false}))return;
+    await replaceSceneLights(scene,backup.lights,managedSignature,protectedSignature,frame,{restoring:true});
+    await scene.setFlag(MODULE_ID,'lightingProposal',null);
+    await scene.setFlag(MODULE_ID,'lightingRequest',null);
+    this.lightPreview=null;await this.render();ui.notifications.info('Previous managed lights restored.');
   }
 
   setNextAction(name,message) {
