@@ -11,14 +11,17 @@ pipes and scenery can flow across grid boundaries. It does not assemble separate
 prop images or repeated texture tiles in the current wizard.
 
 **Alignment is a starting point, not a guarantee.** An image generator can move or
-redraw architecture despite the reference. Scene Architect does not detect walls
-from pixels. Review the overlay and adjust native walls and doors to match the art.
+redraw architecture despite the reference. You can now ask ChatGPT to analyse the
+finished image and import its proposed geometry through an optional review step.
+Scene Architect itself does not run an image detector. Review the result and make
+any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.3** introduces the complete-map workflow. Update Scene Architect in
+**0.2.0-alpha.4** adds optional image-analysis geometry import and wall restoration
+to the complete-map workflow. Update Scene Architect in
 Foundry's Add-on Modules screen, then hard-refresh your browser. Confirm the
-installed version is **0.2.0-alpha.3**. The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.3)
+installed version is **0.2.0-alpha.4**. The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.4)
 also provides the module ZIP for manual installation.
 
 For a manual server refresh, stop Foundry and replace the files in
@@ -36,7 +39,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.3` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.4` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -56,7 +59,8 @@ an unpublished release. Prepare the release assets before exposing that manifest
 5. If necessary, change **Scale (%)**, **Horizontal offset** or **Vertical offset**,
    then preview again. **Apply map background** saves the source and alignment and
    replaces the background. The coloured overlay is never baked into the map.
-6. **View scene**. Use Foundry's wall controls to move endpoints, reposition doors,
+6. Optionally use **Fit geometry to the finished artwork** as described below.
+   Or go directly to **View scene** and use Foundry's wall controls to move endpoints, reposition doors,
    and add or remove wall segments where the illustration differs. Adjust lights
    and test movement and vision with a player token.
 7. Reopen the wizard to reuse the saved original image or import a replacement.
@@ -65,6 +69,59 @@ an unpublished release. Prepare the release assets before exposing that manifest
 Settings and file selections save when you apply. Leaving the file input empty
 reuses the saved source. The module always fits from the original image, avoiding
 repeated resampling of an already fitted background.
+
+## Optional: analyse the finished map and import geometry
+
+1. **Apply map background** first, including any overall scale or position changes.
+2. In step 4, **Export analysis image** and **Copy analysis prompt**. Attach that
+   exported PNG to ChatGPT with the prompt in a follow-up after generating the art.
+   It is your fitted background without wall overlays. Do not attach a screenshot
+   with coloured lines or substitute the original, differently sized image.
+3. Ask ChatGPT to return the geometry JSON. Paste it into **Geometry JSON**, or
+   choose a JSON file, then **Import geometry for review**. A selected file takes
+   priority over pasted text. This saves the proposal and previews it; no walls change.
+4. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
+   using the overlay selector and **Preview geometry**. Proposed walls are mint,
+   doors pink and uncertain/plan-informed segments dashed orange. Dashed open
+   passages are review guides and create no blocking walls.
+5. Inspect the listed review notes and orange markers. Acknowledge review if any
+   segments are flagged, then **Apply proposed geometry** and confirm replacement.
+6. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
+   **Restore previous walls** returns to the snapshot taken before the last geometry
+   operation; the current walls then become the next restore snapshot.
+
+**Apply proposed geometry replaces ALL walls and doors in the scene**, including
+manual edits and walls created by other modules. This avoids leaving old geometry
+blocking the proposed doorways. It preserves the background, lights, Tiles and
+tokens. Imported doors start closed. Restore also replaces all current walls,
+including edits made after applying. Both actions explicitly explain this before
+you confirm.
+
+The backup retains prior wall coordinates, settings, door states and custom flags.
+Replacement and restoration create new document IDs, so references to specific
+wall IDs in other modules may need updating. Only one restore snapshot is retained;
+export the scene in Foundry if you need a longer history. A durable backup is saved
+before applying. Partial failures attempt to remove staged walls and restore any
+deleted originals; failed recovery leaves the snapshot available for restoration.
+
+Analysis coordinates are normalized to the full exported image and rounded only
+to scene pixels, never to grid squares. Diagonal segments are supported. The prompt
+includes an image identifier and dimensions which the returned JSON must preserve.
+Changing the background path or scene dimensions invalidates the analysis. Unsaved
+image/alignment changes must be applied first. Editing native walls after preview
+requires another preview before applying. Do not modify the background file in place:
+import it again so its new path invalidates old analysis.
+
+Validation checks schema, image identity, finite in-range coordinates, unique IDs,
+nonzero lengths and overlapping spans, including solid walls covering doors or
+passages. Unknown document fields are discarded. Limits: 1 MB of JSON and 2000
+segments. These checks do not prove visual accuracy, connected rooms or leak-free
+vision. Secret doors and plan-informed geometry are always marked for review.
+
+This adds one manual image-and-text exchange with ChatGPT. There is no API service
+or automatic model call. The earlier laboratory proof was a successful qualitative
+check on one mostly rectangular image, not a reliability benchmark. Its experimental
+JSON lacks the production image identifier: request new JSON using this workflow.
 
 ## Quick server test
 
@@ -81,6 +138,10 @@ repeated resampling of an already fitted background.
    block the import. Open/close the doors and test token vision and collision.
 5. Close/reopen the wizard and refresh the browser. Confirm the saved image returns.
    Try a small image offset, preview and reapply; native geometry must stay fixed.
+6. Export the analysis image, request geometry, import it and compare the overlays.
+   Confirm that import alone changes no walls. Review the markers and apply.
+7. Test doors and token vision, then **Restore previous walls**. Check the prior
+   geometry and door states return while artwork, lights and Tiles stay unchanged.
 
 To test the import mechanics before generating art, use the exported reference PNG
 as the input image. Its labels are part of that test image and will remain visible;
@@ -131,6 +192,11 @@ Project data lives in `flags.scene-architect.plan`; the new image source and
 alignment are in `flags.scene-architect.map`. A revision marker rejects stale
 saves from another wizard (best effort, not a distributed lock).
 
+Analysis state uses `flags.scene-architect.geometryRequest`, `geometryProposal`
+and `geometryBackup`. Proposals and backups survive closing/reopening the wizard.
+Do not run simultaneous geometry operations from different GM clients; scene checks
+and the local operation guard are best effort, not a server-side transaction.
+
 If an upload fails, the current background stays in place. A background-update
 failure attempts to restore it; the uploaded source/settings may already be saved
 so you can retry. Server-side partial failures can require manual recovery.
@@ -139,7 +205,8 @@ so you can retry. Server-side partial failures can require manual recovery.
 
 - Initial plans use rectangular rooms and orthogonal walls. You can edit native
   walls freely afterward; the module does not rebuild them on image import.
-- No automatic tracing, image segmentation, per-asset imports or API generation.
+- No built-in automatic tracing, image segmentation, per-asset imports or API generation.
+  Geometry analysis is a manual exchange followed by a reviewed JSON import.
 - No guarantee that generated room shapes, door positions or feature counts
   match the reference. Native geometry follows the plan until you adjust it.
 - Doors drawn into the artwork remain static. The prompt requests ordinary doors
@@ -164,18 +231,23 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for this change: **26 core tests and 35 browser assertions**
+Local verification for this change: **37 core tests and 48 browser assertions**
 passed. Coverage includes full-map import, exact output dimensions, live edited
 wall overlays, omission of overlays from the uploaded background, offsets,
 saved-source reuse, preservation of native edits and Tiles, cancelled application,
 upload failure and background rollback. Retained legacy renderer checks also run.
+Additional coverage includes analysis-image export, image identity, invalid/overlapping
+geometry, review acknowledgement, cancelled replacement, stale previews, preservation
+of other scene documents, saved proposals, restoration and partial write recovery.
 The reference and wizard screenshot were visually inspected.
 
 Canvas rendering and PNG encoding/decoding run in a real browser. **Foundry host,
 document and upload APIs are mocked.** Verification on the user's Foundry server
 remains necessary.
 
-Code: `scene-architect.js` owns the wizard; `whole-map.js` handles references,
+Code: `scene-architect.js` owns the wizard; `image-geometry.js` handles analysis
+prompts, proposal validation, overlays, wall replacement and recovery;
+`whole-map.js` handles references,
 prompts and full-map rendering; `plan.js`, `geometry.js` and `foundry-data.js`
 provide initial geometry; `project.js` saves project state. Legacy art modules are
 retained for compatibility. The abandoned atlas experiment is outside the runtime

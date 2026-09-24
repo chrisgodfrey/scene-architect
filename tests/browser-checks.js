@@ -67,11 +67,11 @@ try {
   globalThis.CONST={GRID_TYPES:{SQUARE:1},WALL_DOOR_TYPES:{DOOR:1,SECRET:2}};
   const {SceneArchitectApp}=await import('../scripts/scene-architect.js');
   const p=structuredClone(fixture);p.art.assignments={};
-  const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70},walls:compileGeometry(p).map(e=>wallDataFromSegment(e,70)),tiles:[],flags:{'scene-architect':{plan:p}},firstLevel:{background:{src:''},async update(data){this.background.src=data['background.src'];}},
+  const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70},walls:compileGeometry(p).map((e,i)=>({...wallDataFromSegment(e,70),_id:`old-wall-${i}`})),tiles:[],flags:{'scene-architect':{plan:p}},firstLevel:{background:{src:''},async update(data){this.background.src=data['background.src'];}},
     getFlag(scope,key){return this.flags[scope]?.[key];},async setFlag(scope,key,value){this.flags[scope][key]=structuredClone(value);},
     async update(data){applyDocumentUpdate(this,data);},
-    async createEmbeddedDocuments(type,items){if(type!=='Tile')throw new Error('Unexpected document write');const docs=items.map((x,i)=>({...x,id:'tile-'+i}));this.tiles.push(...docs);return docs;},
-    async deleteEmbeddedDocuments(type,ids){this.tiles=this.tiles.filter(t=>!ids.includes(t.id));}};
+    async createEmbeddedDocuments(type,items,options={}){const key=type==='Wall'?'walls':'tiles';const docs=items.map(x=>{const id=options.keepId?x._id:crypto.randomUUID();return {...structuredClone(x),_id:id,id};});this[key].push(...docs);return docs;},
+    async deleteEmbeddedDocuments(type,ids){const key=type==='Wall'?'walls':'tiles';this[key]=this[key].filter(t=>!ids.includes(t.id??t._id));}};
   scenes.set(scene.id,scene);
   const app=new SceneArchitectApp();app.workflow=projectFromScene(scene);await app.render();
   assert(document.querySelectorAll('[name="mapFile"]').length===1&&!document.querySelector('[data-asset-id]'),'Wizard requests one complete map with no asset slots');
@@ -113,6 +113,48 @@ try {
   let failed=false;try{await reopened.applyMap();}catch(e){failed=e.message.includes('simulated upload failure');}
   assert(failed&&scene.firstLevel.background.src===background,'Upload failure leaves the existing background intact');
   foundry.applications.apps.FilePicker.upload=originalUpload;
+  const request=await reopened.analysisRequest();
+  assert(request.width===1960&&request.height===1680&&request.imageId,'Analysis request is tied to the currently fitted background and scene dimensions');
+  const createURL=URL.createObjectURL,anchorClick=HTMLAnchorElement.prototype.click;let exportedBlob;
+  // Inspect the actual export blob without starting an OS download in headless Edge.
+  HTMLAnchorElement.prototype.click=function(){};
+  URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
+  await reopened.exportAnalysisImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
+  const exportUrl=URL.createObjectURL(exportedBlob),exportedImage=await loadImage(exportUrl);
+  assert(exportedImage.width===1960&&same(pixel(renderWholeMap(exportedImage,scene),100,35),[255,0,0,255]),'Analysis export contains fitted artwork without native wall overlays');URL.revokeObjectURL(exportUrl);
+  const seg=(id,a,b,kind='wall',reviewRequired=false)=>({id,a,b,kind,evidence:'visible',reviewRequired,note:reviewRequired?'Check this opening':''});
+  const proposal={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:1960,height:1680},walls:[seg('wall1',[.1,.2],[.4,.2]),seg('door1',[.4,.2],[.5,.2],'door'),seg('wall2',[.5,.2],[.9,.2])],openings:[seg('gap',[.1,.5],[.2,.5],'open',true)],reviewNotes:['Confirm the passage.']};
+  const originalWalls=JSON.stringify(scene.walls),preserved=JSON.stringify([scene.tiles,scene.firstLevel.background]);
+  reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify({...proposal,source:{...proposal.source,imageId:'wrong-image'}});
+  let rejected=false;try{await reopened.importGeometry();}catch(e){rejected=e.message.includes('different analysis image');}
+  assert(rejected&&JSON.stringify(scene.walls)===originalWalls,'JSON from a different analysis image is rejected without wall changes');
+  const jsonTransfer=new DataTransfer();jsonTransfer.items.add(new File([JSON.stringify(proposal)],'geometry.json',{type:'application/json'}));
+  reopened.element.querySelector('[name="geometryFile"]').files=jsonTransfer.files;
+  await reopened.importGeometry();
+  assert(JSON.stringify(scene.walls)===originalWalls&&scene.getFlag('scene-architect','geometryProposal').walls.length===3,'File import overrides pasted text and persists the proposal without modifying walls');
+  assert(same(pixel(reopened.element.querySelector('.sa-geometry-preview canvas'),200,336),[72,245,208,255]),'Geometry preview draws imported normalized coordinates over the fitted image');
+  let needsReview=false;try{await reopened.applyGeometry();}catch(e){needsReview=e.message.includes('Review the orange');}
+  assert(needsReview&&JSON.stringify(scene.walls)===originalWalls,'Flagged openings require review acknowledgement before replacement');
+  reopened.element.querySelector('[name="geometryReviewed"]').checked=true;
+  foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyGeometry();
+  assert(JSON.stringify(scene.walls)===originalWalls,'Cancelling geometry replacement leaves native documents untouched');
+  foundry.applications.api.DialogV2.confirm=async()=>true;
+  scene.walls[0].c[0]++;
+  let stale=false;try{await reopened.applyGeometry();}catch(e){stale=e.message.includes('Preview the proposed geometry');}
+  assert(stale,'Manual wall edits invalidate an earlier geometry preview');
+  const beforeReplacement=structuredClone(scene.walls);
+  await reopened.previewGeometry();await reopened.applyGeometry();
+  assert(scene.walls.length===3&&scene.walls[1].door===1&&!scene.walls.some(w=>w.flags?.['scene-architect']?.analysisSegment==='gap'),'Apply creates native wall/door documents and leaves open passages unblocked');
+  assert(JSON.stringify([scene.tiles,scene.firstLevel.background])===preserved,'Geometry replacement preserves the image and existing Tiles');
+  const geometryApp=new SceneArchitectApp();geometryApp.workflow=projectFromScene(scene);await geometryApp.render();
+  assert(geometryApp.element.textContent.includes('Restore previous walls')&&geometryApp.element.querySelector('[name="geometryJson"]').value.includes('wall1'),'Reopening restores the geometry proposal and wall-backup action');
+  await geometryApp.restoreGeometry();
+  const stripId=wall=>{const c=structuredClone(wall);delete c.id;delete c._id;if(c.flags?.['scene-architect'])delete c.flags['scene-architect'].geometryBatch;return c;};
+  assert(same(scene.walls.map(stripId),beforeReplacement.map(stripId)),'Restore action restores the previous wall coordinates, types and document settings');
+  scene.firstLevel.background.src='changed.png';
+  let changedImage=false;try{await geometryApp.previewGeometry();}catch(e){changedImage=e.message.includes('analysis image has changed');}
+  assert(changedImage,'Changing the background invalidates the stored geometry analysis');
+  scene.firstLevel.background.src=background;
   globalThis.Scene={implementation:{async create(data){
     const draft={...scene,...structuredClone(data),id:'new-draft',walls:[],lights:[],tiles:[],firstLevel:{background:{src:''},async update(change){this.background.src=change['background.src'];}},
       async view(){},async createEmbeddedDocuments(type,items){const docs=items.map((x,i)=>({...x,id:type+'-'+i}));this[type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles'].push(...docs);return docs;}};
@@ -123,10 +165,13 @@ try {
   assert(fresh.scene.lights.length===3&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates three native lights and a geometry guide (mock Foundry)');
   assert(!!fresh.scene.getFlag('scene-architect','revision'),'New draft is linked and persisted for reopening');
   await reopened.render();
-  await reopened.previewMap();
+  await reopened.previewGeometry();
   document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
   document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
   document.querySelector('#assembly').style.display='none';
+  const geometrySection=document.querySelector('[name="geometryJson"]').closest('.sa-section');
+  for(const section of document.querySelectorAll('.sa-section'))if(section!==geometrySection)section.style.display='none';
+  window.scrollTo(0,0);
   await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({passed:results.length,results},null,2)});
   document.title='PASS — Scene Architect';
 } catch(error) {

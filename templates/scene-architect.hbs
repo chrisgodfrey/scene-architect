@@ -60,7 +60,31 @@
     <div class="sa-map-preview"></div>
   </section>
   <section class="sa-section">
-    <h2>4. Refine in Foundry</h2>
+    <h2>4. Optional: fit geometry to the finished artwork</h2>
+    <p>After applying your map background, export a clean analysis image and attach it to ChatGPT with the analysis prompt. Paste or upload the returned geometry JSON below.</p>
+    <p class="hint">Use this exported image, which includes your applied scale and position. Ask ChatGPT to analyse it in a separate follow-up after generation. No API connection is used.</p>
+    {{#if analysisReady}}
+    <div class="sa-actions sa-wrap"><button type="button" data-action="exportAnalysisImage">Export analysis image</button><button type="button" data-action="copyAnalysisPrompt">Copy analysis prompt</button></div>
+    {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
+    <label>Geometry JSON<textarea name="geometryJson" rows="6" placeholder="Paste the image-analysis JSON here, not the original layout plan">{{geometryJson}}</textarea></label>
+    <label>Or choose a JSON file (takes priority over pasted text)<input type="file" name="geometryFile" accept=".json,application/json"></label>
+    <button type="button" data-action="importGeometry">Import geometry for review</button>
+    {{#if hasProposal}}
+    <p class="sa-status good">{{geometrySummary}}</p>
+    {{#each geometryNotes}}<p class="sa-status warning">{{this}}</p>{{/each}}
+    {{#each geometryReview}}<p class="sa-status warning">{{this}}</p>{{/each}}
+    <label>Geometry overlay<select name="geometryOverlay"><option value="proposed">Proposed geometry</option><option value="current">Current geometry</option><option value="both">Both</option><option value="none">Artwork only</option></select></label>
+    <p class="hint">Proposed walls: mint · Doors: pink · Review markers: dashed orange. Current walls: yellow. Open passages are dashed guides only. Preview again after changing the overlay.</p>
+    <label class="sa-check"><input type="checkbox" name="geometryReviewed"> I have reviewed the marked segments and accept them as a starting point.</label>
+    <div class="sa-actions"><button type="button" data-action="previewGeometry">Preview geometry</button><button type="button" data-action="applyGeometry">Apply proposed geometry</button></div>
+    <div class="sa-geometry-preview"></div>
+    <p class="hint">Applying replaces all current walls and doors, including manual edits, and saves the previous walls for restoration. Geometry is estimated from the image and may still need correction.</p>
+    {{/if}}
+    {{else}}<p class="hint">Apply your complete map background first to enable this step.</p>{{/if}}
+    {{#if hasGeometryBackup}}<button type="button" data-action="restoreGeometry">Restore previous walls</button>{{/if}}
+  </section>
+  <section class="sa-section">
+    <h2>5. Refine in Foundry</h2>
     <p>View the scene and use Foundry's wall controls to move wall endpoints, reposition doors or add/remove segments to match the artwork. Adjust lights as needed. Test movement and vision with a player token.</p>
     <p class="hint">The module starts with geometry from the plan; it does not detect walls in the generated image. Reimporting changes only the background and preserves your native edits. Global image alignment cannot correct local changes in room shapes.</p>
     <button type="button" data-action="viewScene">View scene</button>

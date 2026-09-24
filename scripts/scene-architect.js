@@ -7,6 +7,8 @@ import { geometryConflict, projectFromScene, saveProject } from "./project.js";
 
 import {renderGuide, wholeMapPrompt, renderWholeMap, mapAlignment, assertMapFrame, applyWholeMap} from './whole-map.js';
 
+import {analysisFrame, analysisPrompt, backgroundPath, validateImageGeometry, proposedWallData, drawProposal, wallSignature, replaceSceneWalls} from './image-geometry.js';
+
 const MODULE_ID = "scene-architect";
 const MODULE_TITLE = "Scene Architect";
 
@@ -112,7 +114,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   static DEFAULT_OPTIONS={
     id:'scene-architect-app',classes:['scene-architect'],tag:'div',position:{width:820,height:850},
     window:{title:'Scene Architect — complete map',icon:'fa-solid fa-drafting-compass',resizable:true},
-    actions:Object.fromEntries(['copyLayoutPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
+    actions:Object.fromEntries(['copyLayoutPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','exportAnalysisImage','copyAnalysisPrompt','importGeometry','previewGeometry','applyGeometry','restoreGeometry','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
   };
   static PARTS={main:{template:`modules/${MODULE_ID}/templates/scene-architect.hbs`}};
 
@@ -135,12 +137,21 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   get plan() {return this.workflow.plan;}
   async _prepareContext() {
     const p=this.plan,scene=this.scene,map=this.workflow.map;
+    let proposal=null,analysisWarning='';
+    if(scene?.getFlag(MODULE_ID,'geometryProposal')) {
+      try {proposal=this.savedProposal();} catch(e) {analysisWarning=e.message;}
+    }
+    const review=proposal?[...proposal.walls,...proposal.openings].filter(s=>s.reviewRequired):[];
     return {...this.workflow,hasPlan:!!p,sceneReady:!!scene,sceneNameLinked:scene?.name,
       projects:[...game.scenes].filter(s=>s.getFlag(MODULE_ID,'plan')).map(s=>({id:s.id,name:s.name,selected:s.id===scene?.id})),
       editedGeometry:scene&&p?geometryConflict(scene,p):null,
       legacyTiles:scene?[...scene.tiles].filter(t=>t.flags?.[MODULE_ID]?.generated).length:0,
       warnings:p?planWarnings(p):[],planJson:p?JSON.stringify(p,null,2):'',
       planSummary:p?`${p.spaces.length} rooms · ${p.features.length} illustrated features · one complete map`:'',
+      analysisReady:!!map?.src,geometryJson:proposal?JSON.stringify(proposal,null,2):'',hasProposal:!!proposal,analysisWarning,
+      geometrySummary:proposal?`${proposal.walls.length} wall/door segments · ${proposal.openings.length} open passages · ${review.length} review markers`:'',
+      geometryReview:review.map(s=>`${s.id}: ${s.note||'Check this segment against the artwork.'}`),geometryNotes:proposal?.reviewNotes??[],
+      hasGeometryBackup:!!scene?.getFlag(MODULE_ID,'geometryBackup'),
       mapSource:map?.src,scale:(map?.scale??1)*100,offsetX:map?.x??0,offsetY:map?.y??0};
   }
 
@@ -233,6 +244,79 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     await applyWholeMap(scene,background,setLevelBackground);
     await this.render();
     ui.notifications.info('Complete map applied. Review and adjust native walls, doors and lights in Foundry. Reimporting preserves those edits.');
+  }
+
+  assertAnalysisReady() {
+    if(!this.workflow.map?.src)throw new Error('Apply a complete map background before analysing geometry.');
+    if(this.element?.querySelector('[name="mapFile"]')?.files.length)throw new Error('Apply the selected map image before analysing geometry.');
+    const value=n=>Number(this.element?.querySelector(`[name="${n}"]`)?.value);
+    if(this.element&&[value('mapScale')/100!==this.workflow.map.scale,value('mapX')!==this.workflow.map.x,value('mapY')!==this.workflow.map.y].some(Boolean))throw new Error('Apply your changed map alignment before analysing geometry.');
+    return analysisFrame(this.scene);
+  }
+  savedProposal() {
+    const request=this.scene.getFlag(MODULE_ID,'geometryRequest');
+    if(!request||request.frame!==analysisFrame(this.scene))throw new Error('The analysis image has changed. Export it again and request fresh geometry.');
+    return validateImageGeometry(this.scene.getFlag(MODULE_ID,'geometryProposal'),request);
+  }
+  async analysisRequest() {
+    const frame=this.assertAnalysisReady();
+    let request=this.scene.getFlag(MODULE_ID,'geometryRequest');
+    if(!request||request.frame!==frame) {
+      request={imageId:crypto.randomUUID(),frame,width:this.scene.width,height:this.scene.height};
+      await this.scene.setFlag(MODULE_ID,'geometryRequest',request);
+    }
+    return request;
+  }
+  async exportAnalysisImage() {
+    const request=await this.analysisRequest(),image=await loadImage(backgroundPath(this.scene));
+    const blob=await canvasBlob(renderWholeMap(image,this.scene,{},false));
+    if(request.frame!==analysisFrame(this.scene))throw new Error('Background changed while exporting. Try again.');
+    downloadBlob(`${slugify(this.scene.name)}-analyse-${request.imageId}.png`,blob);
+  }
+  async copyAnalysisPrompt() {await copyText(analysisPrompt(this.plan,await this.analysisRequest()));}
+  async importGeometry() {
+    const frame=this.assertAnalysisReady(),request=this.scene.getFlag(MODULE_ID,'geometryRequest');
+    if(!request||request.frame!==frame)throw new Error('Export the analysis image and copy the analysis prompt first.');
+    const input=this.element.querySelector('[name="geometryJson"]').value;
+    const file=this.element.querySelector('[name="geometryFile"]').files[0];
+    if(file&&file.size>1_000_000)throw new Error('Geometry JSON exceeds 1 MB.');
+    const proposal=validateImageGeometry(file?await file.text():input,request);
+    if(analysisFrame(this.scene)!==frame)throw new Error('Background changed during import. Export the analysis image again.');
+    await this.scene.setFlag(MODULE_ID,'geometryProposal',proposal);
+    this.geometryPreview=null;await this.render();await this.previewGeometry();
+    ui.notifications.info('Geometry proposal saved for review. No native walls have changed.');
+  }
+  async previewGeometry() {
+    this.geometryPreview=null;
+    const frame=this.assertAnalysisReady(),proposal=this.savedProposal(),signature=wallSignature(this.scene);
+    const image=await loadImage(backgroundPath(this.scene));
+    if(frame!==analysisFrame(this.scene)||signature!==wallSignature(this.scene))throw new Error('Scene changed during preview. Preview again.');
+    const mode=this.element.querySelector('[name="geometryOverlay"]').value;
+    const c=renderWholeMap(image,this.scene,{},mode==='current'||mode==='both');
+    if(mode==='proposed'||mode==='both')drawProposal(c,proposal);
+    c.setAttribute('aria-label','Geometry analysis comparison');
+    this.element.querySelector('.sa-geometry-preview').replaceChildren(c);
+    if(mode==='proposed'||mode==='both')this.geometryPreview={frame,signature,json:JSON.stringify(proposal)};
+  }
+  async applyGeometry() {
+    const frame=this.assertAnalysisReady(),proposal=this.savedProposal(),preview=this.geometryPreview;
+    if(this.element.querySelector('[name="geometryFile"]').files.length||this.element.querySelector('[name="geometryJson"]').value.trim()!==JSON.stringify(proposal,null,2))throw new Error('Import your edited geometry JSON before applying.');
+    if(!preview||preview.frame!==frame||preview.signature!==wallSignature(this.scene)||preview.json!==JSON.stringify(proposal))throw new Error('Preview the proposed geometry again before applying; the scene or proposal may have changed.');
+    const review=[...proposal.walls,...proposal.openings].filter(s=>s.reviewRequired);
+    if(review.length&&!this.element.querySelector('[name="geometryReviewed"]').checked)throw new Error('Review the orange markers, then check the review acknowledgement before applying.');
+    if(!await DialogV2.confirm({window:{title:'Replace scene walls and doors?'},content:`<p>Replace ALL ${this.scene.walls.size??this.scene.walls.length} current walls and doors, including manual edits, with ${proposal.walls.length} proposed segments? Open passages create no blocking walls.</p><p>The previous walls will be saved under Restore previous walls. Background, lights, Tiles and tokens stay unchanged. Imported doors start closed. ${review.length} marked segments still need your judgement.</p>`,rejectClose:false}))return;
+    await replaceSceneWalls(this.scene,proposedWallData(proposal,this.scene),preview.signature,frame);
+    this.geometryPreview=null;await this.render();
+    ui.notifications.info('Proposed geometry applied. Test doors, movement and vision. Restore previous walls is available.');
+  }
+  async restoreGeometry() {
+    const scene=this.scene,backup=scene.getFlag(MODULE_ID,'geometryBackup');
+    if(!backup||!Array.isArray(backup.walls))throw new Error('No wall backup is available.');
+    const frame=analysisFrame(scene),signature=wallSignature(scene);
+    if(backup.width!==scene.width||backup.height!==scene.height)throw new Error('Scene dimensions changed since the backup. Restore its dimensions before restoring walls.');
+    if(!await DialogV2.confirm({window:{title:'Restore previous walls?'},content:'<p>This replaces ALL current walls and doors, including edits made since the last geometry operation, with the saved snapshot. The current walls become the next restore snapshot. Background, lights, Tiles and tokens remain unchanged.</p>',rejectClose:false}))return;
+    await replaceSceneWalls(scene,backup.walls,signature,frame,{restoring:true});
+    this.geometryPreview=null;await this.render();ui.notifications.info('Previous walls restored.');
   }
 
 }

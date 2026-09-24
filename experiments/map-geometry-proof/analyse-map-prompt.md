@@ -1,0 +1,9 @@
+Analyse the attached FINISHED battlemap image and return geometry matching what is visible in that image. Do not generate or edit artwork.
+
+Use the full image rectangle: top-left is [0,0], bottom-right is [1,1]. Coordinates are fractions of image width and height, not grid coordinates. Do not round to tactical grid squares. Trace consistent wall centre lines, not shadows, pipes, furniture or floor-tile seams. Keep geometry simple; do not follow every decorative stone.
+
+Return JSON with version 1, coordinateSpace "normalized-image", boundaryConvention "wall-centre", walls and openings arrays, and reviewNotes. Each wall has a unique id, a:[x,y], b:[x,y], kind:"wall"|"door"|"secret", evidence:"visible"|"plan-informed", reviewRequired:boolean, and note. Each open passage has the same fields but kind:"open" in the openings array. An open passage is not a blocking wall. Split solid walls at door and passage endpoints. Share endpoints exactly where segments meet. A door replaces its solid wall span; do not duplicate blocking segments.
+
+Measure the actual drawn boundaries and door jambs. Original room names and door semantics may explain intent, but original coordinates must not override the image. Flag ambiguous spans; do not invent a clear passage where the artwork is obscured. A secret-door classification cannot be established from a concealed door's appearance alone: mark it plan-informed if supplied by the original brief.
+
+For this laboratory, the original intent was an experimental chamber with a machinery room and infirmary on its left, a constructs room on its right and a northern stair chamber reached through a secret door. There are ordinary doors to machinery and constructs, and an open passage to the infirmary. Use that as context only. Do not create collision geometry around props in this test.

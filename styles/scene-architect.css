@@ -9,6 +9,7 @@
 .scene-architect .sa-grid-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
 .scene-architect .sa-grid-3 { grid-template-columns: repeat(3, 1fr); }
 .scene-architect .sa-map-preview canvas { width: 100%; height: auto; margin-top: 12px; }
+.scene-architect .sa-geometry-preview canvas { width: 100%; height: auto; margin-top: 12px; }
 .scene-architect .sa-map-warning:empty { display: none; }
 .scene-architect .sa-actions { display: flex; gap: 8px; margin-top: 10px; }
 .scene-architect .sa-wrap { flex-wrap: wrap; }
