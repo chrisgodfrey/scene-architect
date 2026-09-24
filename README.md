@@ -23,10 +23,10 @@ any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.7** makes plan-guided geometry import resilient to incomplete model
-bookkeeping. ChatGPT still receives stable wall, room, feature and passage context,
-but an omitted source ID now creates a mandatory review warning instead of blocking
-an otherwise valid complete geometry network.
+**0.2.0-alpha.8** adds a guided correction loop for rejected final geometry.
+Scene Architect retains the rejected response and exact validator error, builds a
+bounded correction request containing the original geometry contract, and validates
+the complete corrected response before any native walls or doors can change.
 
 ### Install or update in Foundry
 
@@ -39,9 +39,9 @@ an otherwise valid complete geometry network.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.7**.
+   **0.2.0-alpha.8**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.7)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.8)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -60,7 +60,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.7` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.8` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -146,13 +146,19 @@ every retry. To start over instead, use **Copy fresh layout request instead**.
    the result into **Geometry JSON**, or
    choose a JSON file, then **Import geometry for review**. A selected file takes
    priority over pasted text. This saves the proposal and previews it; no walls change.
-5. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
+5. If validation rejects the geometry, read the persistent **Geometry not accepted**
+   message and select **Copy geometry correction request**. Send it in the same
+   ChatGPT conversation, then paste the complete corrected response and select
+   **Import corrected geometry JSON**. The request includes the original registered
+   analysis contract, exact validator error and rejected response. The rejected JSON
+   remains in the wizard for manual editing, and native walls stay unchanged.
+6. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
    using the overlay selector and **Preview geometry**. Proposed walls are mint,
    doors pink and uncertain/plan-informed segments dashed orange. Dashed open
    passages are review guides and create no blocking walls.
-6. Inspect the listed review notes and orange markers. Acknowledge review if any
+7. Inspect the listed review notes and orange markers. Acknowledge review if any
    segments are flagged, then **Apply proposed geometry** and confirm replacement.
-7. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
+8. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
    **Restore previous walls** returns to the snapshot taken before the last geometry
    operation; the current walls then become the next restore snapshot.
 
@@ -328,15 +334,16 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for the current source: **50 unit tests and 73 browser assertions**
+Local verification for the current source: **50 unit tests and 76 browser assertions**
 passed. Coverage includes plan-validation correction and retry, full-map import,
 exact output dimensions, live edited
 wall overlays, omission of overlays from the uploaded background, offsets,
 saved-source reuse, preservation of native edits and Tiles, cancelled application,
 upload failure and background rollback. Retained legacy renderer checks also run.
 Additional coverage includes analysis-image export, image identity, invalid/overlapping
-geometry, review acknowledgement, cancelled replacement, stale previews, preservation
-of other scene documents, saved proposals, restoration and partial write recovery.
+geometry, final-geometry correction and retry, review acknowledgement, cancelled
+replacement, stale previews, preservation of other scene documents, saved proposals,
+restoration and partial write recovery.
 The reference and wizard screenshot were visually inspected.
 
 Canvas rendering and PNG encoding/decoding run in a real browser. **Foundry host,

@@ -13,6 +13,8 @@
       {{#if next.previewMap}}choose the downloaded map image and preview its alignment.{{/if}}
       {{#if next.copySourceAnalysisPrompt}}copy the same-chat geometry prompt, or choose the fitted-image fallback.{{/if}}
       {{#if next.exportAnalysisImage}}use the fitted-image geometry fallback.{{/if}}
+      {{#if next.copyGeometryRepairPrompt}}copy the geometry correction request and send it to ChatGPT.{{/if}}
+      {{#if next.importGeometry}}import the corrected complete geometry JSON.{{/if}}
       {{#if next.previewGeometry}}review the proposed geometry overlay before applying it.{{/if}}
       </span>
     </p>
@@ -122,9 +124,21 @@
         <p class="hint">Use this fallback after editing the image, changing conversations, importing an external map, or if ChatGPT cannot inspect the earlier generated image. It includes the applied scale, offsets and current vector correspondence. If you edit Foundry walls after copying either prompt, copy a fresh prompt before import.</p>
       </details>
       {{#if analysisWarning}}<p class="sa-status warning">{{analysisWarning}}</p>{{/if}}
+      {{#if geometryRepair}}
+      <div class="sa-status warning" role="status">
+        <p><strong>Geometry not accepted:</strong> {{geometryRepair.error}}</p>
+        <p>The rejected JSON is retained below. No native walls or doors have changed.</p>
+        <div class="sa-actions sa-wrap">
+          <button class="{{#if next.copyGeometryRepairPrompt}}sa-primary{{/if}}" type="button" data-action="copyGeometryRepairPrompt">Copy geometry correction request</button>
+          <button class="{{#if next.importGeometry}}sa-primary{{/if}}" type="button" data-action="importGeometry">Import corrected geometry JSON</button>
+          {{#if sameChatReady}}<button type="button" data-action="copySourceAnalysisPrompt">Copy fresh analysis request instead</button>{{else}}<button type="button" data-action="copyAnalysisPrompt">Copy fresh analysis request instead</button>{{/if}}
+        </div>
+        <p class="hint">Send the correction request in the same ChatGPT conversation. It contains the exact validator error, rejected response and original geometry contract.</p>
+      </div>
+      {{/if}}
       <label>Geometry JSON<textarea name="geometryJson" rows="6" placeholder="Paste the geometry-analysis JSON here, not the original layout plan">{{geometryJson}}</textarea></label>
       <label>Or choose a JSON file (takes priority over pasted text)<input type="file" name="geometryFile" accept=".json,application/json"></label>
-      <button type="button" data-action="importGeometry">Import geometry for review</button>
+      {{#unless geometryRepair}}<button type="button" data-action="importGeometry">Import geometry for review</button>{{/unless}}
       {{#if hasProposal}}
       <p class="sa-status good">Complete: {{geometrySummary}}.</p>
       {{#if registrationReviewNote}}<p class="sa-status warning">{{registrationReviewNote}}</p>{{/if}}

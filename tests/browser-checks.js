@@ -168,6 +168,13 @@ try {
   const seg=(id,a,b,kind='wall',reviewRequired=false,sourceIds=[],change='added')=>({id,a,b,kind,evidence:'visible',reviewRequired,note:reviewRequired?'Check this opening':'',sourceIds,change});
   const fittedIds=[...request.registration.segments,...request.registration.openings].map(s=>s.id);
   const proposal={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:1960,height:1680},walls:[seg('wall1',[.1,.2],[.4,.2],'wall',false,[fittedIds[0]],'moved'),seg('door1',[.4,.2],[.5,.2],'door'),seg('wall2',[.5,.2],[.9,.2])],openings:[seg('gap',[.1,.5],[.2,.5],'open',true)],removedSourceIds:fittedIds.slice(2),reviewNotes:['Confirm the passage.']};
+  const invalidGeometry=structuredClone(proposal);invalidGeometry.openings[0].id='opening-corridor-salon';invalidGeometry.openings[0].kind='door';
+  const rejectedGeometryJson=JSON.stringify(invalidGeometry,null,2);
+  reopened.element.querySelector('[name="geometryJson"]').value=rejectedGeometryJson;await reopened.run('importGeometry');
+  assert(reopened.geometryRepair?.json===rejectedGeometryJson&&reopened.geometryRepair.error==='opening-corridor-salon: invalid segment kind.'&&reopened.element.textContent.includes('Geometry not accepted'),'Invalid final geometry retains the rejected JSON and exact validator error in persistent correction guidance');
+  assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copyGeometryRepairPrompt','Geometry validation failure makes the correction request the one primary action');
+  await reopened.run('copyGeometryRepairPrompt');
+  assert(clipboardText.includes('"validatorError": "opening-corridor-salon: invalid segment kind."')&&clipboardText.includes('"rejectedGeometryText"')&&clipboardText.includes('REGISTERED PRIOR')&&clipboardText.includes('untrusted data')&&reopened.element.querySelector('.sa-primary').dataset.action==='importGeometry','Geometry correction request includes the original contract and bounded rejection evidence, then advances to corrected import');
   const originalWalls=JSON.stringify(scene.walls),preserved=JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background]);
   const promptWallX=scene.walls[0].c[0];scene.walls[0].c[0]++;reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(proposal);
   let staleRequest=false;try{await reopened.importGeometry();}catch(e){staleRequest=e.message.includes('current walls changed');}
@@ -179,7 +186,7 @@ try {
   const jsonTransfer=new DataTransfer();jsonTransfer.items.add(new File([JSON.stringify(proposal)],'geometry.json',{type:'application/json'}));
   reopened.element.querySelector('[name="geometryFile"]').files=jsonTransfer.files;
   await reopened.importGeometry();
-  assert(JSON.stringify(scene.walls)===originalWalls&&scene.getFlag('scene-architect','geometryProposal').registrationReviewRequired&&reopened.element.textContent.includes('treated as removed for this preview'),'File import tolerates missing source accounting, shows a review warning and leaves walls unchanged');
+  assert(!reopened.geometryRepair&&JSON.stringify(scene.walls)===originalWalls&&scene.getFlag('scene-architect','geometryProposal').registrationReviewRequired&&reopened.element.textContent.includes('treated as removed for this preview'),'Corrected file import clears repair state, tolerates missing source accounting and leaves walls unchanged');
   assert(same(pixel(reopened.element.querySelector('.sa-geometry-preview canvas'),200,336),[72,245,208,255]),'Geometry preview draws imported normalized coordinates over the fitted image');
   assert(reopened.element.querySelector('.sa-primary').dataset.action==='applyGeometry'&&reopened.element.querySelector('[data-next-action-text]').textContent.includes('apply the proposed geometry'),'Geometry preview keeps the primary button and textual next action in agreement');
   let needsReview=false;try{await reopened.applyGeometry();}catch(e){needsReview=e.message.includes('Review the orange');}
