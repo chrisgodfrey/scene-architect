@@ -31,10 +31,18 @@ the result and make any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.13** keeps the turnkey scene-fit workflow from alpha.12 and adds a
-runtime compatibility fallback: semantic light presets become steady lights when
-their preferred animation is not installed, while explicit unavailable animation
-overrides still fail before document creation. The current source uses five required stages:
+**0.2.0-alpha.14** makes map import an artwork-only decision and treats a pure
+90-degree top-down orthographic projection as a hard map requirement. Its map
+prompt tells the image generator to paint over the supplied reference on one flat
+coordinate plane and explicitly rejects isometric, oblique and perspective
+views. Stage 3 names the same projection requirement before map application
+because the later scene-fit stage can move walls but cannot repair perspective.
+Scene Architect does not automatically classify projection, so regenerate an
+image that shows diagonal projection axes, perspective convergence,
+foreshortening or visible vertical wall faces. This release also removes the
+misleading pre-fit wall overlay from stage 3 and retains alpha.13's semantic
+light-animation compatibility fallback. The current source uses five required
+stages:
 **Describe**, **Build**, **Generate map**, **Fit Foundry scene**, and **Test**.
 Geometry and lighting are no longer separate or skippable stages.
 
@@ -49,9 +57,9 @@ Geometry and lighting are no longer separate or skippable stages.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.13**.
+   **0.2.0-alpha.14**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.13)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.14)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -70,7 +78,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.13` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.14` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -88,11 +96,11 @@ an unpublished release. Prepare the release assets before exposing that manifest
    background. It does not create prop Tiles.
 3. **Export PNG reference** and **Copy map prompt**. Attach the PNG in ChatGPT with
    that prompt. Generate and download **one complete map image**.
-4. Choose that image under **Import the map**, then **Preview the map**. Scene
-   Architect automatically fits it to the full scene. Yellow lines are current
-   walls, blue lines are ordinary doors, and purple lines are secret doors. Toggle
-   the overlay off to inspect the artwork alone, then **Apply map background**.
-   The coloured overlay is never baked into the map.
+4. Choose that image under **Import the map**, then **Preview the artwork**. Scene
+   Architect automatically fits it to the full scene. Judge the theme, contents
+   and framing here, not wall alignment: generated architecture can move away
+   from the reference. Choose **Use this artwork and continue to scene fitting**.
+   The original walls remain unchanged until the required fit in the next step.
 5. Use **Fit the Foundry scene**. Choose **Copy complete scene-fit prompt** in the
    original map conversation. ChatGPT returns one wrapper containing geometry and
    lighting. Import it, inspect the combined overlay, and apply it. For an external

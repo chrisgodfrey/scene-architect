@@ -139,9 +139,10 @@ try {
   await fetch('/output/map-reference.png',{method:'POST',body:await canvasBlob(guide)});
   const transfer=new DataTransfer();transfer.items.add(new File([await canvasBlob(source)],'whole-map.png',{type:'image/png'}));app.element.querySelector('[name="mapFile"]').files=transfer.files;
   await app.previewMap();
-  assert(!!app.element.querySelector('.sa-map-preview canvas'),'Selected complete image produces a real canvas overlay preview');
+  assert(!!app.element.querySelector('.sa-map-preview canvas')&&!app.element.querySelector('[name="showWalls"]')&&same(pixel(app.element.querySelector('.sa-map-preview canvas'),100,35),[255,0,0,255]),'Stage 3 shows the complete artwork without a stale wall-overlay control');
+  assert(app.element.textContent.includes('pure 90° top-down orthographic 2D map')&&app.element.textContent.includes('Reject and regenerate artwork')&&app.element.textContent.includes('visible vertical wall faces'),'Map generation and artwork acceptance require a non-perspective orthographic image');
   assert(app.element.querySelector('.sa-map-warning').textContent.includes('aspect ratio'),'Different aspect ratio produces a visible stretching warning');
-  assert(app.element.querySelector('.sa-primary').dataset.action==='applyMap'&&app.element.querySelector('[data-next-action-text]').textContent.includes('apply the map background'),'Map preview keeps the primary button and textual next action in agreement');
+  assert(app.element.querySelector('.sa-primary').dataset.action==='applyMap'&&app.element.querySelector('[data-next-action-text]').textContent.includes('continue to scene fitting'),'Artwork preview keeps the primary button and required scene-fit handoff in agreement');
   scene.walls[0].c=[15,35,200,35];scene.walls[0].door=1;
   const withWalls=renderWholeMap(source,scene,{},true),withoutWalls=renderWholeMap(source,scene,{},false);
   assert(same(pixel(withWalls,100,35),[56,189,248,255]),'Preview uses edited native door coordinates and type');

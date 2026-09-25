@@ -14,6 +14,12 @@ test('map request describes one complete image, features, light intent and gener
   for(const light of plan.lights)assert(prompt.includes(light.name));
   assert.match(prompt,/GENERATION REQUEST ID: request-123/);
   assert.match(prompt,/extend naturally across grid boundaries/);
+  assert.match(prompt,/PAINTING OVER.*reference in place/);
+  assert.match(prompt,/camera exactly 90 degrees above/);
+  assert.match(prompt,/one flat Cartesian coordinate plane/);
+  assert.match(prompt,/parallel in the reference must remain parallel/);
+  for(const forbidden of ['isometric','oblique','three-quarter','perspective','foreshortening','horizon','vanishing point','vertical wall faces'])assert(prompt.includes(forbidden));
+  assert.match(prompt,/Before returning the image, verify/);
   assert(!prompt.includes('IMPORT SLOT:'));
 });
 test('map request carries semantic preset effects without explicit overrides',()=>{

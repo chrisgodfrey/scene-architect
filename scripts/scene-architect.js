@@ -394,19 +394,18 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   }
   async previewMap() {
     const {image,alignment,mismatch}=await this.readMap();
-    const overlay=this.element.querySelector('[name="showWalls"]').checked;
-    const c=renderWholeMap(image,this.scene,alignment,overlay);
-    c.setAttribute('aria-label','Complete map with optional live wall and door overlay');
+    const c=renderWholeMap(image,this.scene,alignment,false);
+    c.setAttribute('aria-label','Complete map artwork preview');
     this.element.querySelector('.sa-map-preview').replaceChildren(c);
     this.element.querySelector('.sa-map-warning').textContent=mismatch?'Image aspect ratio differs from the scene. Full-frame fit stretches it to match; inspect the preview before applying.':'';
-    this.setNextAction('applyMap','inspect the preview, then apply the map background.');
+    this.setNextAction('applyMap','inspect the artwork, then use it and continue to scene fitting.');
   }
   async applyMap() {
     const {image,file,alignment,mismatch}=await this.readMap(),scene=this.scene;
     const existing=[...scene.tiles].filter(t=>t.flags?.[MODULE_ID]?.generated).length;
-    if(!await DialogV2.confirm({window:{title:'Apply complete map background?'},content:
-      '<p>This replaces the scene background. Your current walls, doors, lights and Tiles stay in place.</p>'+
-      (mismatch?'<p><strong>The image has a different aspect ratio. Full-frame fit stretches it to the scene dimensions.</strong> Check the overlay preview before continuing.</p>':'')+
+    if(!await DialogV2.confirm({window:{title:'Use this complete map artwork?'},content:
+      '<p>This replaces the scene background. Your current walls, doors, lights and Tiles stay in place until the required scene-fit stage aligns them with the artwork.</p>'+
+      (mismatch?'<p><strong>The image has a different aspect ratio. Full-frame fit stretches it to the scene dimensions.</strong> Check the artwork preview before continuing.</p>':'')+
       (existing?`<p>${existing} older Scene Architect prop Tiles will still be visible above the map. Use a new draft or remove unwanted Tiles in Foundry.</p>`:'')+
       '<p>After applying, continue to the required scene-fit stage to align walls, doors and managed lights with the artwork.</p>',rejectClose:false}))return;
     // Check the saved revision before uploads, and again before committing the source.

@@ -100,9 +100,9 @@
     <ol class="sa-steps">
       <li><button class="{{#if next.exportGuide}}sa-primary{{/if}}" type="button" data-action="exportGuide">Export PNG reference</button>.</li>
       <li><button class="{{#if next.copyMapPrompt}}sa-primary{{/if}}" type="button" data-action="copyMapPrompt">Copy complete-map prompt</button>. Attach the exported reference in the same ChatGPT conversation.</li>
-      <li>Generate and download one complete map image. Keep that conversation open if you want to use the no-reattachment geometry and lighting shortcuts in steps 4 and 5.</li>
+      <li>Generate and download one complete map image. It must be a pure 90° top-down orthographic 2D map, not isometric or perspective. Keep that conversation open if you want to use the no-reattachment geometry and lighting shortcuts in steps 4 and 5.</li>
     </ol>
-    <p class="hint">The reference guides architecture, feature placement and visible light sources. Artwork can flow across grid boundaries. Image generation may shift walls or doors, so review the result in Foundry.</p>
+    <p class="hint">The reference guides architecture, feature placement and visible light sources. Artwork can flow across grid boundaries. Image generation may redraw walls or doors; do not regenerate solely for geometry because step 4 aligns the Foundry scene to the finished artwork. Projection is different: step 4 cannot repair an isometric or perspective image.</p>
       </div>
     </details>
   </section>
@@ -115,13 +115,11 @@
       <div class="sa-step-body">
     <ol class="sa-steps">
       <li><label>Choose the complete map image (PNG, JPEG or WebP, up to 30 MB)<input type="file" name="mapFile" accept="image/png,image/jpeg,image/webp"></label></li>
-      <li><button class="{{#if next.previewMap}}sa-primary{{/if}}" type="button" data-action="previewMap">Preview the map</button> with the live-wall overlay.</li>
-      <li>Inspect the artwork and live-wall overlay, then <button type="button" data-action="applyMap">apply map background</button>.</li>
+      <li><button class="{{#if next.previewMap}}sa-primary{{/if}}" type="button" data-action="previewMap">Preview the artwork</button>.</li>
+      <li>Confirm the artwork is a pure 90° top-down orthographic 2D map, then check the theme, contents and framing and <button type="button" data-action="applyMap">use this artwork and continue to scene fitting</button>.</li>
     </ol>
     {{#if mapSource}}<p class="sa-status good">Complete: a map source is saved. Leave the file empty to reuse {{mapSource}}.</p>{{/if}}
-    <p class="hint">Scene Architect fits the complete image to the scene rectangle. A different aspect ratio stretches to fit.</p>
-    <label class="sa-check"><input name="showWalls" type="checkbox" checked> Show live walls and doors in preview</label>
-    <p class="hint">Yellow: walls · Blue: doors · Purple: secret doors. The overlay is never baked into your map.</p>
+    <p class="hint">Reject and regenerate artwork with isometric or diagonal projection axes, perspective convergence, foreshortening or visible vertical wall faces. This preview is for artwork only. Scene Architect fits the complete image to the scene rectangle, and a different aspect ratio stretches to fit. The original plan walls remain unchanged until step 4 compares and aligns walls, doors and managed lights with this exact artwork.</p>
     <p class="sa-map-warning sa-status warning" role="status"></p>
     <div class="sa-map-preview"></div>
       </div>

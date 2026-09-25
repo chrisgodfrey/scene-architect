@@ -68,12 +68,14 @@ export function renderGuide(plan,scene) {
 
 export function wholeMapPrompt(plan,scene,{generationId}={}) {
   const {width,height}=mapSize(scene);
-  return `Create ONE complete, coherently illustrated top-down battlemap using the attached Scene Architect PNG reference. Return one full-map image, not an asset pack or separate props.
+  return `Create ONE complete battlemap by PAINTING OVER the attached Scene Architect PNG reference in place. Return one full-map image, not an asset pack or separate props.
+
+PROJECTION IS A HARD TECHNICAL CONSTRAINT: use a camera exactly 90 degrees above the map for a true orthographic top-down 2D view. Preserve the reference as one flat Cartesian coordinate plane. Lines that are parallel in the reference must remain parallel, with no perspective convergence or distance-based scaling. Never use isometric, oblique, three-quarter or perspective projection. Do not show a horizon, vanishing point, foreshortening or vertical wall faces. Show architecture, furniture and props only as overhead plan-view surfaces and footprints.
 
 SCENE: ${plan.scene.name}
 ${plan.scene.description}
 
-Keep the reference's full canvas framing and ${width}:${height} aspect ratio (ideally ${width} × ${height} pixels). Preserve room positions, wall centre lines, corridor widths and every door opening as closely as possible. Do not add a border, crop the map, move rooms or invent doorways.
+Keep the reference's full canvas framing and ${width}:${height} aspect ratio (ideally ${width} × ${height} pixels). Paint the finished environment directly over the supplied layout without recomposing it. Preserve room positions, wall centre lines, corridor widths and every door opening as closely as possible. Do not add a border, crop the map, move rooms or invent doorways.
 Reference legend: yellow lines are native wall boundaries, blue lines are ordinary doors, purple lines are secret doors. Replace these annotations with believable architecture; do not paint the coloured lines, labels, numbers or dashed boxes. Draw ordinary door openings with an open leaf so a permanently closed door is not baked into the floor. Secret-door concealment is visual and must be checked by the GM.
 
 Paint one continuous environment with coherent lighting, materials and atmosphere. Machinery, pipes, wear and decoration should extend naturally across grid boundaries. There are no individual tile cells to fill. Numbered footprints indicate approximate centres, sizes and orientation, not hard clipping boxes. Keep circulation and doorways readable. No tactical grid, text, legend, cutout props, contact sheet or separated panels. True orthographic overhead view.
@@ -89,7 +91,7 @@ ${plan.lights.length?plan.lights.map(l=>`${l.name||'Light'}: ${l.preset??'legacy
 
 ${generationId?`GENERATION REQUEST ID: ${generationId}\nKeep this image available in this conversation for an optional geometry-reading follow-up.`:''}
 
-The final image will sit beneath editable Foundry walls and doors. Following the reference reduces manual alignment work; it is not a request to generate geometry data.`;
+The final image will sit beneath a uniform square Foundry grid with editable walls and doors, so perspective imagery is unusable. Before returning the image, verify that it is still a pure 90-degree orthographic top-down 2D map: no isometric or diagonal projection axes, converging parallel lines, foreshortening, horizon, vanishing point or visible vertical wall faces. Following the reference reduces manual alignment work; it is not a request to generate geometry data.`;
 }
 
 export function renderWholeMap(image,scene,alignment={},overlay=false) {
