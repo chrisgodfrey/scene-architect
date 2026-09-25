@@ -80,6 +80,9 @@ export function buildRegistrationPrior(plan,scene,request) {
 export function analysisPrompt(plan,request,{embedded=false}={}) {
   const sourceMode=request.mode==='source',version=sourceMode?2:1,coordinateSpace=sourceMode?'normalized-source-image':'normalized-image';
   const registration=request.registration;
+  const gridPolicy=request.gridLocked
+    ? `GRID LOCK IS REQUIRED: the registered wall and door coordinates are authoritative. Copy each represented source segment's endpoints exactly; do not move grid-valid walls to follow brushwork drift. Added, split or merged segment endpoints must lie on the ${request.gridSize}px scene grid. Door vectors stay straight and collinear with their wall opening; ignore the angle of any decorative painted door leaf.`
+    : 'This scene contains supported manual geometry edits, so do not snap to grid squares. Trace their actual wall-centre positions.';
   const firstSource=registration?.segments[0]?.id??registration?.openings[0]?.id;
   const sourceFields=firstSource?`"sourceIds":["${firstSource}"],"change":"moved"`:'"sourceIds":[],"change":"added"';
   const subject=sourceMode
@@ -90,14 +93,14 @@ export function analysisPrompt(plan,request,{embedded=false}={}) {
     : `${subject} Return ONLY valid JSON, without markdown fences.`;
   return `${opening}
 
-Use the entire ${sourceMode?'previously generated source image':'attached image'}: top-left [0,0], bottom-right [1,1]. Coordinates are fractions of image width/height. Do not snap to grid squares. Trace simple, consistent WALL CENTRE LINES, ignoring shadows, pipes, furniture and floor-tile seams. Preserve diagonals if visible.
+Use the entire ${sourceMode?'previously generated source image':'attached image'}: top-left [0,0], bottom-right [1,1]. Coordinates are fractions of image width/height. ${gridPolicy} Trace simple, consistent WALL CENTRE LINES, ignoring shadows, pipes, furniture, angled door leaves and floor-tile seams. Preserve intentional diagonals only when this is not a grid-locked request.
 
 Schema (example segments demonstrate format only; replace them with your analysis):
 {"version":${version},"coordinateSpace":"${coordinateSpace}","boundaryConvention":"wall-centre","source":{"imageId":"${request.imageId}","width":${request.width},"height":${request.height}},"walls":[{"id":"wall-1","a":[0.1,0.2],"b":[0.4,0.2],"kind":"wall","evidence":"visible","reviewRequired":false,"note":"",${sourceFields}},{"id":"door-1","a":[0.4,0.2],"b":[0.45,0.2],"kind":"door","evidence":"visible","reviewRequired":false,"note":"","sourceIds":[],"change":"added"}],"openings":[],"removedSourceIds":[],"reviewNotes":[]}
 
 Copy source EXACTLY. For walls, kind must be wall, door, secret or window. Ordinary open passages go in openings with kind open and the same segment fields; they are gaps, not blocking walls. Split solid walls at every doorway/passage so no solid span covers an opening. Shared endpoints must match exactly. IDs must be unique. Do not duplicate segments or draw both edges of a thick wall. Include the complete scene wall network, not only corrections. Do not add collision walls around props.
 
-The registered prior below is the CURRENT vector wireframe and semantic plan context in the same coordinate space as your answer. Compare every source ID against the finished artwork instead of rediscovering anonymous rooms. Original coordinates are a prior, not truth: move them when the artwork moved, split or merge them when topology changed, add visible architecture, and remove vectors that are absent.
+The registered prior below is the CURRENT vector wireframe and semantic plan context in the same coordinate space as your answer. Compare every source ID against the finished artwork instead of rediscovering anonymous rooms. ${request.gridLocked?'For represented source IDs, the registered coordinates are binding grid geometry; preserve them even when painted edges drift slightly. Use the artwork to detect clear topology changes, not to move the whole plan off-grid.':'Original coordinates are a prior, not truth: move them when the artwork moved, split or merge them when topology changed, add visible architecture, and remove vectors that are absent.'}
 
 For every returned wall/opening include sourceIds and change. change must be unchanged, moved, changed, split, merged or added. Use [] only for added segments. A source ID may support multiple split segments or several source IDs may support one merged segment. Put every prior segment/opening ID that is not represented in removedSourceIds. Do not both reuse and remove an ID. Room rectangles and feature centres are identity landmarks, not collision geometry.
 
@@ -123,6 +126,49 @@ function overlap(a,b) {
   const p=project(b.a),q=project(b.b);
   return Math.min(length,Math.max(p,q))-Math.max(0,Math.min(p,q))>1e-7;
 }
+
+function gridLockGeometry(walls,openings,request) {
+  const width=Number(request.sceneWidth??request.width),height=Number(request.sceneHeight??request.height),grid=Number(request.gridSize);
+  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(grid)||grid<=0)throw new Error('Grid-locked geometry is missing valid scene dimensions or grid size. Copy a fresh scene-fit request.');
+  const alignment=request.alignment;
+  if(request.mode==='source'&&(!alignment||!Number.isFinite(alignment.scale)||alignment.scale<=0||!Number.isFinite(alignment.offsetX)||!Number.isFinite(alignment.offsetY)))throw new Error('Grid-locked source geometry is missing its saved map alignment.');
+  const fitted=p=>request.mode==='source'
+    ? [(1-alignment.scale)/2+alignment.offsetX/width+p[0]*alignment.scale,(1-alignment.scale)/2+alignment.offsetY/height+p[1]*alignment.scale]
+    : p;
+  const snap=p=>[
+    rounded(Math.max(0,Math.min(1,Math.round(p[0]*width/grid)*grid/width))),
+    rounded(Math.max(0,Math.min(1,Math.round(p[1]*height/grid)*grid/height)))
+  ];
+  const priorById=new Map([...(request.registration?.segments??[]),...(request.registration?.openings??[])].map(segment=>[segment.id,segment]));
+  const distance=(a,b)=>Math.hypot((a[0]-b[0])*width,(a[1]-b[1])*height);
+  let adjusted=0,material=0;
+  const lock=segment=>{
+    let a,b;
+    const prior=segment.sourceIds?.length===1&&!['split','merged'].includes(segment.change)?priorById.get(segment.sourceIds[0]):null;
+    if(prior) {
+      const priorA=snap(fitted(prior.a)),priorB=snap(fitted(prior.b));
+      const forward=Math.max(distance(segment.a,priorA),distance(segment.b,priorB));
+      const reverse=Math.max(distance(segment.a,priorB),distance(segment.b,priorA));
+      [a,b]=forward<=reverse?[priorA,priorB]:[priorB,priorA];
+    } else {
+      a=snap(segment.a);b=snap(segment.b);
+    }
+    const movement=Math.max(distance(segment.a,a),distance(segment.b,b));
+    if(movement>=.5)adjusted++;
+    if(movement>grid*.25)material++;
+    return {
+      ...segment,
+      a,
+      b,
+      reviewRequired:segment.reviewRequired||movement>grid*.25,
+      note:movement>grid*.25
+        ? [segment.note,`Scene Architect moved this segment ${Math.round(movement)}px to preserve the ${grid}px scene grid.`].filter(Boolean).join(' ')
+        : segment.note
+    };
+  };
+  return {walls:walls.map(lock),openings:openings.map(lock),adjusted,material};
+}
+
 export function validateImageGeometry(input,request) {
   let raw=input;
   if(typeof raw==='string') {
@@ -204,6 +250,14 @@ export function validateImageGeometry(input,request) {
     if(!walls.length)throw new Error('No blocking wall segments remain inside the visible fitted scene.');
     if(raw.reviewNotes.length+clippedNotes.length>100)throw new Error('Source geometry creates more than 100 clipping review notes. Reduce cropped segments or use the fitted-image fallback.');
     raw={...raw,reviewNotes:[...raw.reviewNotes,...clippedNotes]};
+  }
+  if(request.gridLocked) {
+    const locked=gridLockGeometry(walls,openings,request);
+    walls=locked.walls;openings=locked.openings;
+    if(locked.adjusted) {
+      if(raw.reviewNotes.length>=100)throw new Error('Grid locking creates more than 100 review notes.');
+      raw={...raw,reviewNotes:[...raw.reviewNotes,`Scene Architect grid-locked ${locked.adjusted} proposed segment${locked.adjusted===1?'':'s'}${locked.material?`; ${locked.material} moved more than one-quarter cell and require review`:''}.`]};
+    }
   }
   const all=[...walls,...openings];
   const sceneWidth=request.sceneWidth??request.width,sceneHeight=request.sceneHeight??request.height;

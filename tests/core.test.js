@@ -43,8 +43,8 @@ test('semantic lights link to visible sources and preserve bounded animation ove
   const small=resolvedLightConfig({name:'Suggested portal',preset:'magic-portal'},{rainbowswirl:{}},'small');
   assert.equal(small.dim,6);assert.equal(small.bright,2.25);
   assert.equal(resolvedLightConfig({name:'Suggested lamp',preset:'flickering-lamp'},{}).animation.type,'');
-  assert(!availableLightPresetKeys({flicker:{}}).includes('magic-portal'));
-  assert(availableLightPresetKeys({flicker:{}}).includes('flickering-lamp'));
+  assert(!availableLightPresetKeys({torch:{}}).includes('magic-portal'));
+  assert(availableLightPresetKeys({torch:{}}).includes('flickering-lamp'));
 });
 test('legacy animations retain their meaning and unavailable effects fail explicitly',()=>{
   const p=plan();p.lights=[{name:'Old lamp',x:4,y:5,animation:'flicker'}];

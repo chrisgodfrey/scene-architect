@@ -16,7 +16,28 @@ function mockScene() {
 }
 test('analysis prompt specifies the fitted image, complete network, uncertainty and source identity',()=>{
   const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[{kind:'secret'}]},{...request,registration});
-  assert.match(text,/test-image/);assert.match(text,/Do not snap to grid/);assert.match(text,/complete scene wall network/);assert.match(text,/Set reviewRequired true/);assert.match(text,/wall-a/);
+  assert.match(text,/test-image/);assert.match(text,/do not snap to grid/i);assert.match(text,/complete scene wall network/);assert.match(text,/Set reviewRequired true/);assert.match(text,/wall-a/);
+});
+test('grid-locked analysis preserves registered coordinates and snaps new geometry',()=>{
+  const lockedRegistration={version:1,coordinateSpace:'normalized-image',segments:[
+    {id:'wall-a',label:'W1',a:[.1,.25],b:[.4,.25],kind:'wall'},
+    {id:'door-a',label:'W2',a:[.4,.25],b:[.5,.25],kind:'door'}
+  ],openings:[],rooms:[],features:[]};
+  const lockedRequest={...request,sceneWidth:1000,sceneHeight:800,gridLocked:true,gridSize:100,registration:lockedRegistration};
+  const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[]},lockedRequest);
+  assert.match(text,/GRID LOCK IS REQUIRED/);assert.match(text,/registered coordinates are binding grid geometry/);assert.doesNotMatch(text,/Original coordinates are a prior, not truth/);
+  const raw={...proposal(),walls:[
+    {...segment('wall',[.15,.2],[.39,.24]),sourceIds:['wall-a'],change:'moved'},
+    {...segment('door',[.4,.24],[.49,.24],'door'),sourceIds:['door-a'],change:'moved'},
+    {...segment('added',[.61,.37],[.61,.63]),sourceIds:[],change:'added'}
+  ],openings:[],removedSourceIds:[]};
+  const result=validateImageGeometry(raw,lockedRequest);
+  assert.deepEqual(result.walls[0].a,[.1,.25]);assert.deepEqual(result.walls[0].b,[.4,.25]);
+  assert.deepEqual(result.walls[1].a,[.4,.25]);assert.deepEqual(result.walls[1].b,[.5,.25]);
+  assert.deepEqual(result.walls[2].a,[.6,.375]);assert.deepEqual(result.walls[2].b,[.6,.625]);
+  assert(result.walls[0].reviewRequired);
+  assert(result.reviewNotes.some(note=>/grid-locked 3 proposed segments; 1 moved more than one-quarter cell/.test(note)));
+  assert.deepEqual(validateImageGeometry(result,lockedRequest),result);
 });
 test('same-chat prompt requests source coordinates without another attachment',()=>{
   const text=analysisPrompt({scene:{name:'Test',description:'Map'},spaces:[],openings:[]},{...sourceRequest,registration:{...registration,coordinateSpace:'normalized-source-image'}});

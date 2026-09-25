@@ -70,7 +70,7 @@ try {
   globalThis.CONFIG={Canvas:{lightAnimations:{flicker:{},torch:{},rainbowswirl:{},pulse:{}}}};
   const {SceneArchitectApp,buildSceneIntentPrompt,buildLayoutPrompt}=await import('../scripts/scene-architect.js');
   const intentPrompt=buildSceneIntentPrompt({brief:'An old school with four classrooms',sceneName:'School',columns:34,rows:28,gridSize:70,animations:['flicker','rainbowswirl']});
-  assert(intentPrompt.includes('"kind": "scene-intent"')&&intentPrompt.includes('"circulation": "linear|central-corridor"')&&intentPrompt.includes('Do not include x, y, width, height'),'Primary scene design prompt requests coordinate-free semantic intent with bounded circulation');
+  assert(intentPrompt.includes('"kind": "scene-intent"')&&intentPrompt.includes('"circulation": "linear|central-corridor"')&&intentPrompt.includes('Do not include x, y, width, height')&&intentPrompt.includes('Use flickering-lamp for ordinary lanterns and oil lamps'),'Primary scene design prompt requests coordinate-free semantic intent with bounded circulation and animated practical lights');
   const layoutPrompt=buildLayoutPrompt({brief:'Portal room',sceneName:'Test',columns:20,rows:20,gridSize:70},['flicker','rainbowswirl']);
   assert(layoutPrompt.includes('"spaces"')&&layoutPrompt.includes('"preset":"flickering-lamp"')&&layoutPrompt.includes('sourceFeatureId')&&layoutPrompt.includes('flicker, rainbowswirl'),'Advanced low-level layout prompt retains its coordinate and semantic-light contract');
   const p=structuredClone(fixture);p.art.assignments={};
@@ -266,12 +266,12 @@ try {
   const lightRequest=await geometryApp.lightingRequest('source');
   assert(lightRequest.registration.managedLights.length===2&&lightRequest.registration.protectedLights.length===1&&lightRequest.imageId===generation.imageId,'Same-chat lighting request registers managed lights and immutable protected context against the original generation');
   await geometryApp.copySourceLightingPrompt();
-  assert(clipboardText.includes('tangible visible light emitters')&&clipboardText.includes('Do not ask me to attach')&&clipboardText.includes('Protected IDs are context only'),'Same-chat lighting prompt reuses the generated image and explains tangible emitters plus protected context');
-  const managedIds=lightRequest.registration.managedLights.map(light=>light.id);
+  assert(clipboardText.includes('tangible visible light emitters')&&clipboardText.includes('Do not ask me to attach')&&clipboardText.includes('Protected IDs are context only')&&clipboardText.includes('cannot disprove a temporal effect'),'Same-chat lighting prompt reuses the generated image and preserves semantic effects plus protected context');
+  const portalSource=lightRequest.registration.managedLights.find(light=>light.preset==='magic-portal').id,lampSource=lightRequest.registration.managedLights.find(light=>light.preset==='flickering-lamp').id;
   const lightProposal={version:2,coordinateSpace:'normalized-source-image',requestId:lightRequest.requestId,source:{imageId:generation.imageId,width:200,height:100},lights:[
-    {id:'portal-fit',name:'Portal fit',center:[.3,.3],preset:'magic-portal',spread:'large',color:'#954aff',evidence:'visible',reviewRequired:false,note:'Visible portal aperture',sourceIds:[managedIds[0]],change:'moved'},
+    {id:'portal-fit',name:'Portal fit',center:[.3,.3],preset:'magic-portal',spread:'large',color:'#954aff',evidence:'visible',reviewRequired:false,note:'Visible portal aperture',sourceIds:[portalSource],change:'moved'},
     {id:'lamp-added',name:'Painted wall lamp',center:[.7,.6],preset:'flickering-lamp',spread:'small',color:'#ffb45b',evidence:'visible',reviewRequired:false,note:'Visible wall fixture',sourceIds:[],change:'added'}
-  ],removedSourceIds:[managedIds[1]],reviewNotes:[]};
+  ],removedSourceIds:[lampSource],reviewNotes:[]};
   const invalidLighting=structuredClone(lightProposal);invalidLighting.lights[1].preset='unknown-effect';
   const rejectedLightingJson=JSON.stringify(invalidLighting,null,2);
   geometryApp.element.querySelector('[name="lightingJson"]').value=rejectedLightingJson;await geometryApp.run('importLighting');
@@ -339,6 +339,12 @@ try {
   assert(fresh.scene.lights.length===4&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates semantic and legacy native lights plus a geometry guide (mock Foundry)');
   assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
   assert(fresh.scene.lights[1].config.animation.type===''&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Unavailable semantic preset animations fall back to steady while steady and legacy lights remain valid');
+  fresh.workflow.map={src:fresh.scene.firstLevel.background.src,scale:1,x:0,y:0,width:fresh.scene.width,height:fresh.scene.height,generationId:null};
+  const lockedRequest=await fresh.analysisRequest('fitted');
+  assert(lockedRequest.gridLocked&&lockedRequest.gridSize===70,'Unmodified deterministic draft geometry enables 70px grid locking');
+  fresh.scene.walls[0].c[0]++;
+  const freeFitRequest=await fresh.analysisRequest('fitted');
+  assert(!freeFitRequest.gridLocked,'A manual off-grid wall edit keeps the free-fit geometry path');
   geometryApp.workflow.legacySeparateFit=false;
   await scene.setFlag('scene-architect','geometryProposal',null);await scene.setFlag('scene-architect','lightingProposal',null);
   await geometryApp.render();await geometryApp.copySceneFitPrompt();

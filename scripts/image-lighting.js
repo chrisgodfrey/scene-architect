@@ -1,5 +1,5 @@
 import {analysisFrame} from './image-geometry.js';
-import {lightDataFromIntent,lightPresetKeys} from './foundry-data.js';
+import {availableLightPresetKeys,lightDataFromIntent,lightPresetKeys} from './foundry-data.js';
 
 const MODULE='scene-architect';
 const active=new Set();
@@ -135,6 +135,7 @@ REGISTERED LIGHT PRIOR:
 ${JSON.stringify(request.registration)}
 
 The prior is registered in the same coordinate space as the answer. Managed lights are Scene Architect output that this complete proposal may move, change, split, merge or remove. Protected lights belong to the GM or another module and must stay unchanged.
+For every represented managed source, preserve its registered semantic preset when that preset is available. A still image can establish the emitter's position, spread and color, but it cannot disprove a temporal effect such as flicker, flame or pulse. Only added lights choose a new preset freely; when merging sources with different presets, choose the best supported semantic preset and require review.
 
 Original scene intent:
 Scene: ${plan.scene.name}
@@ -183,6 +184,8 @@ export function validateImageLighting(input,request,catalog={}) {
   if(!Array.isArray(raw.lights)||raw.lights.length>100)throw new Error('lights must be an array of up to 100 proposed lights.');
   if(!Array.isArray(raw.reviewNotes)||raw.reviewNotes.length>100)throw new Error('reviewNotes must be an array of up to 100 strings.');
   const {managedIds,protectedIds}=registeredSourceSets(request);
+  const managedById=new Map(request.registration.managedLights.map(light=>[light.id,light]));
+  const supportedPresets=new Set(availableLightPresetKeys(catalog));
   const ids=new Set(),represented=new Set(),presets=new Set(lightPresetKeys());
   const clean=light=>{
     if(!light||typeof light.id!=='string'||!/^[-a-zA-Z0-9_]{1,80}$/.test(light.id)||ids.has(light.id))throw new Error('Each proposed light needs a unique ID (letters, numbers, hyphens or underscores).');
@@ -198,11 +201,12 @@ export function validateImageLighting(input,request,catalog={}) {
     if(sourceIds.some(id=>!managedIds.has(id)))throw new Error(`${light.id}: sourceIds must be unique managed IDs from the registered prior.`);
     if((light.change==='added')!==!sourceIds.length)throw new Error(`${light.id}: added lights must have no sourceIds; other changes must reference the managed prior.`);
     sourceIds.forEach(id=>represented.add(id));
+    const priorPresets=new Set(sourceIds.map(id=>managedById.get(id)?.preset).filter(preset=>supportedPresets.has(preset)));
     const result={
       id:light.id,
       name:text(light.name,`${light.id} name`,120),
       center:[...light.center],
-      preset:light.preset,
+      preset:priorPresets.size===1?[...priorPresets][0]:light.preset,
       spread:light.spread,
       evidence:light.evidence,
       reviewRequired:light.reviewRequired||light.evidence==='plan-informed',

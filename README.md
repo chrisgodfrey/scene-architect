@@ -31,18 +31,18 @@ the result and make any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.14** makes map import an artwork-only decision and treats a pure
-90-degree top-down orthographic projection as a hard map requirement. Its map
-prompt tells the image generator to paint over the supplied reference on one flat
-coordinate plane and explicitly rejects isometric, oblique and perspective
-views. Stage 3 names the same projection requirement before map application
-because the later scene-fit stage can move walls but cannot repair perspective.
-Scene Architect does not automatically classify projection, so regenerate an
-image that shows diagonal projection axes, perspective convergence,
-foreshortening or visible vertical wall faces. This release also removes the
-misleading pre-fit wall overlay from stage 3 and retains alpha.13's semantic
-light-animation compatibility fallback. The current source uses five required
-stages:
+**0.2.0-alpha.15** grid-locks scene fitting when the current walls still match
+the deterministic plan, preserving exact registered wall and door coordinates
+and snapping genuinely new geometry to grid intersections. Deliberate manual
+wall edits retain the free-fit path. The complete-map prompt now requests closed,
+straight doors instead of angled open leaves. Semantic fitting preserves
+supported registered light effects, and `flickering-lamp` uses Foundry's
+available `torch` animation instead of falling back to steady when `flicker` is
+unavailable. It retains alpha.14's artwork-only import preview and strict
+orthographic generation requirement. Scene Architect still cannot automatically
+classify projection, so regenerate an image that shows diagonal projection axes,
+perspective convergence, foreshortening or visible vertical wall faces. The
+current source uses five required stages:
 **Describe**, **Build**, **Generate map**, **Fit Foundry scene**, and **Test**.
 Geometry and lighting are no longer separate or skippable stages.
 
@@ -57,9 +57,9 @@ Geometry and lighting are no longer separate or skippable stages.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.14**.
+   **0.2.0-alpha.15**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.14)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.15)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -78,7 +78,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.14` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.15` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.

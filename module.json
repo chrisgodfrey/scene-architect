@@ -2,10 +2,10 @@
   "id": "scene-architect",
   "title": "Scene Architect",
   "description": "Complete illustrated maps with required image-fitted walls and managed lights, combined review, and guarded recovery for Foundry VTT v14.",
-  "version": "0.2.0-alpha.14",
+  "version": "0.2.0-alpha.15",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.14/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.2.0-alpha.15/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"

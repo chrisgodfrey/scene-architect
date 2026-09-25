@@ -41,6 +41,8 @@ test('scene intent prompt is coordinate-free and preserves the low-level boundar
   assert.match(prompt,/"circulation": "linear\|central-corridor"/);
   assert.match(prompt,/Do not include x, y, width, height, rotation, coordinates, openings, barriers/);
   assert.match(prompt,/Scene Architect deterministically constructs and validates the complete plan/);
+  assert.match(prompt,/Use flickering-lamp for ordinary lanterns and oil lamps/);
+  assert.match(prompt,/Reserve steady-lamp for genuinely constant magical or electric fixtures/);
   assert.match(prompt,/flicker/);
 });
 

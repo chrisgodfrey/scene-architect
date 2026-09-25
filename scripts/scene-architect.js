@@ -440,6 +440,8 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       imageId:source?this.workflow.map.generationId:crypto.randomUUID(),
       frame,
       wallSignature:signature,
+      gridLocked:geometryConflict(this.scene,this.plan)===null,
+      gridSize:this.plan.scene.gridSize,
       width:source?this.workflow.map.width:this.scene.width,
       height:source?this.workflow.map.height:this.scene.height,
       sceneWidth:this.scene.width,
@@ -448,7 +450,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     };
     desired.registration=buildRegistrationPrior(this.plan,this.scene,desired);
     let request=this.scene.getFlag(MODULE_ID,'geometryRequest');
-    const same=request&&request.mode===desired.mode&&request.frame===desired.frame&&request.wallSignature===signature&&request.width===desired.width&&request.height===desired.height&&JSON.stringify(request.alignment)===JSON.stringify(desired.alignment);
+    const same=request&&request.mode===desired.mode&&request.frame===desired.frame&&request.wallSignature===signature&&request.gridLocked===desired.gridLocked&&request.gridSize===desired.gridSize&&request.width===desired.width&&request.height===desired.height&&JSON.stringify(request.alignment)===JSON.stringify(desired.alignment);
     if(!same) {
       request=desired;
       this.geometryRepair=null;

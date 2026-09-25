@@ -124,6 +124,7 @@ test('source registration applies inverse map alignment and prompt needs no repe
   assert.match(prompt,/Do not ask me to attach/);
   assert.match(prompt,/tangible visible light emitters/);
   assert.match(prompt,/Protected IDs are context only/);
+  assert.match(prompt,/still image.*cannot disprove a temporal effect/);
   assert.match(prompt,/source-m1/);
 });
 
@@ -131,11 +132,12 @@ test('validated proposals preserve correspondence and resolve complete Foundry l
   const scene=mockScene(),request={...fittedRequest,registration:buildLightRegistrationPrior(scene,fittedRequest)};
   const result=validateImageLighting(proposed(request,request.registration),request,catalog);
   assert.equal(result.lights[0].color,'#954aff');
+  assert.equal(result.lights[0].preset,'flickering-lamp');
   assert.equal(result.registrationReviewRequired,false);
   const data=proposedLightData(result,scene,catalog);
   assert.equal(data[0].x,250);assert.equal(data[0].y,240);
-  assert.equal(data[0].config.dim,12);assert.equal(data[0].config.bright,4.5);
-  assert.equal(data[0].config.animation.type,'rainbowswirl');
+  assert.equal(data[0].config.dim,9);assert.equal(data[0].config.bright,3);
+  assert.equal(data[0].config.animation.type,'torch');
   assert.equal(data[0].flags['scene-architect'].sourceId,'source-m1');
   assert.equal(data[1].flags['scene-architect'].sourceId,'analysis-lamp');
   assert.deepEqual(validateImageLighting(result,request,catalog),result);
@@ -197,7 +199,7 @@ test('lighting validation rejects stale identity, malformed fields, unsupported 
     assert.throws(()=>validateImageLighting(invalid,request,catalog));
   }
   assert.throws(()=>validateImageLighting(' '.repeat(1_000_001),request,catalog),/1 MB/);
-  const noAnimation={...catalog};delete noAnimation.rainbowswirl;
+  const noAnimation={...catalog};delete noAnimation.torch;
   assert.throws(()=>validateImageLighting(proposed(request,request.registration),request,noAnimation),/not available/);
   for(const edit of [
     registration=>registration.managedLights[1].id=registration.managedLights[0].id,

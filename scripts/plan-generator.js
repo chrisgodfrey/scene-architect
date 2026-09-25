@@ -330,7 +330,7 @@ SEMANTIC RULES:
 2. Use central-corridor for schools, hospitals, offices and other buildings where rooms need shared circulation. Use linear for sequences such as caves, tombs or railway spaces.
 3. Include every important room and feature from the brief. Feature count must be 1-${MAX_FEATURES_PER_ROOM}.
 4. Use stable unique semantic IDs. Do not include x, y, width, height, rotation, coordinates, openings, barriers, wall segments or light coordinates.
-5. Put a lightPreset on a visible feature when that object emits light. Use ambientLight for non-directional room fill.
+5. Put a lightPreset on a visible feature when that object emits light. Use flickering-lamp for ordinary lanterns and oil lamps, and flame for candles, braziers, hearths, furnaces and other open flames. Reserve steady-lamp for genuinely constant magical or electric fixtures. Use ambientLight for non-directional room fill.
 6. Available Foundry animation keys are ${animationKeys}; semantic presets remain preferred.
 7. Return the semantic JSON once. Scene Architect deterministically constructs and validates the complete plan.`;
 }

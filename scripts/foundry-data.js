@@ -1,7 +1,7 @@
 const MODULE_ID="scene-architect";
 export const LIGHT_PRESET_DATA={
   'steady-lamp':{dim:6,bright:3,color:'#ffb45b',alpha:.5},
-  'flickering-lamp':{dim:6,bright:2,color:'#ffb45b',alpha:.55,animation:{type:'flicker',speed:3,intensity:4,reverse:false}},
+  'flickering-lamp':{dim:6,bright:2,color:'#ffb45b',alpha:.55,animation:{type:'torch',speed:3,intensity:4,reverse:false}},
   flame:{dim:6,bright:3,color:'#ff9b4a',alpha:.55,animation:{type:'torch',speed:3,intensity:4,reverse:false}},
   'magic-portal':{dim:8,bright:3,color:'#954aff',alpha:.6,animation:{type:'rainbowswirl',speed:3,intensity:6,reverse:false}},
   'pulsing-magic':{dim:7,bright:2,color:'#6f8cff',alpha:.55,animation:{type:'pulse',speed:3,intensity:5,reverse:false}},

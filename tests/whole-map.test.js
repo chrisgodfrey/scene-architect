@@ -20,6 +20,9 @@ test('map request describes one complete image, features, light intent and gener
   assert.match(prompt,/parallel in the reference must remain parallel/);
   for(const forbidden of ['isometric','oblique','three-quarter','perspective','foreshortening','horizon','vanishing point','vertical wall faces'])assert(prompt.includes(forbidden));
   assert.match(prompt,/Before returning the image, verify/);
+  assert.match(prompt,/Draw each ordinary door closed, straight and centred/);
+  assert.doesNotMatch(prompt,/open leaf/);
+  assert.match(prompt,/never shift architecture by even part of a grid cell/);
   assert(!prompt.includes('IMPORT SLOT:'));
 });
 test('map request carries semantic preset effects without explicit overrides',()=>{
@@ -29,7 +32,7 @@ test('map request carries semantic preset effects without explicit overrides',()
   ];
   const prompt=wholeMapPrompt(semantic,scene());
   assert.match(prompt,/Portal: magic-portal linked to feature 4; use rainbowswirl/);
-  assert.match(prompt,/Unreliable engine: flickering-lamp linked to feature 5; use flicker/);
+  assert.match(prompt,/Unreliable engine: flickering-lamp linked to feature 5; use torch/);
 });
 test('whole-map application accepts arbitrary native edits and preserves documents',async()=>{
   const s=scene(),before=JSON.stringify([s.walls,s.lights,s.tiles]);
