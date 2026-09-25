@@ -248,7 +248,7 @@ export function validateImageLighting(input,request,catalog={}) {
     lights=transformed;
   }
   for(const light of lights) {
-    lightDataFromIntent(light,{x:0,y:0,spread:light.spread},catalog);
+    lightDataFromIntent(light,{x:0,y:0,spread:light.spread,allowPresetAnimationFallback:false},catalog);
   }
   const result={
     version:1,
@@ -274,7 +274,8 @@ export function proposedLightData(proposal,scene,catalog={}) {
       spread:light.spread,
       sourceId,
       analysisSources:light.sourceIds,
-      change:light.change
+      change:light.change,
+      allowPresetAnimationFallback:false
     },catalog);
   });
 }

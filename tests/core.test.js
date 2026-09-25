@@ -42,6 +42,7 @@ test('semantic lights link to visible sources and preserve bounded animation ove
   assert.equal(data.flags['scene-architect'].sourceId,'plan-light-1-portal');
   const small=resolvedLightConfig({name:'Suggested portal',preset:'magic-portal'},{rainbowswirl:{}},'small');
   assert.equal(small.dim,6);assert.equal(small.bright,2.25);
+  assert.equal(resolvedLightConfig({name:'Suggested lamp',preset:'flickering-lamp'},{}).animation.type,'');
   assert(!availableLightPresetKeys({flicker:{}}).includes('magic-portal'));
   assert(availableLightPresetKeys({flicker:{}}).includes('flickering-lamp'));
 });

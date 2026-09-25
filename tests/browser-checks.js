@@ -330,11 +330,14 @@ try {
     {name:'Medical lamp',preset:'steady-lamp',sourceFeatureId:'medical-1'},
     {name:'Legacy light',x:6,y:7,dim:4,bright:1}
   ];
+  const installedAnimations=CONFIG.Canvas.lightAnimations;
+  CONFIG.Canvas.lightAnimations={rainbowswirl:{}};
   const fresh=new SceneArchitectApp();fresh.usePlan(semantic);await fresh.buildDraft();
+  CONFIG.Canvas.lightAnimations=installedAnimations;
   assert(fresh.scene.walls.filter(w=>w.door===1).length===2&&fresh.scene.walls.filter(w=>w.door===2).length===1,'Draft action creates native wide doors and secret door (mock Foundry)');
   assert(fresh.scene.lights.length===4&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates semantic and legacy native lights plus a geometry guide (mock Foundry)');
   assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
-  assert(fresh.scene.lights[1].config.animation.type==='flicker'&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Flickering, steady and legacy non-animated lights produce complete native animation configs');
+  assert(fresh.scene.lights[1].config.animation.type===''&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Unavailable semantic preset animations fall back to steady while steady and legacy lights remain valid');
   geometryApp.workflow.legacySeparateFit=false;
   await scene.setFlag('scene-architect','geometryProposal',null);await scene.setFlag('scene-architect','lightingProposal',null);
   await geometryApp.render();await geometryApp.copySceneFitPrompt();

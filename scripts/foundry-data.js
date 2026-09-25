@@ -18,17 +18,20 @@ export function lightIntentFromPlan(light) {
   const preset=LIGHT_PRESET_DATA[light.preset]??{};
   return {preset,animation:light.animation??preset.animation};
 }
-export function resolvedLightConfig(light,catalog=lightAnimationCatalog(),spread='medium') {
+export function resolvedLightConfig(light,catalog=lightAnimationCatalog(),spread='medium',{allowPresetAnimationFallback=true}={}) {
   const {preset,animation:configured}=lightIntentFromPlan(light);
   const factor={small:.75,medium:1,large:1.5}[spread];
   if(!factor)throw new Error(`${light.name||'Light'}: spread must be small, medium or large.`);
-  const animation=configured?{
+  let animation=configured?{
     type:configured.type,
     speed:Number(configured.speed),
     intensity:Number(configured.intensity),
     reverse:configured.reverse
   }:{type:"",speed:5,intensity:5,reverse:false};
-  if(animation.type&&!Object.prototype.hasOwnProperty.call(catalog,animation.type))throw new Error(`${light.name||'Light'}: animation "${animation.type}" is not available in this Foundry installation.`);
+  if(animation.type&&!Object.prototype.hasOwnProperty.call(catalog,animation.type)) {
+    if(light.animation!=null||!allowPresetAnimationFallback)throw new Error(`${light.name||'Light'}: animation "${animation.type}" is not available in this Foundry installation.`);
+    animation={type:"",speed:5,intensity:5,reverse:false};
+  }
   return {
     dim:Number(light.dim ?? (preset.dim??6)*factor),
     bright:Number(light.bright ?? (preset.bright??3)*factor),
@@ -43,7 +46,7 @@ export function resolvedLightConfig(light,catalog=lightAnimationCatalog(),spread
     animation
   };
 }
-export function lightDataFromIntent(light,{x,y,spread='medium',sourceId=null,analysisSources=[],change=null}={},catalog=lightAnimationCatalog()) {
+export function lightDataFromIntent(light,{x,y,spread='medium',sourceId=null,analysisSources=[],change=null,allowPresetAnimationFallback=true}={},catalog=lightAnimationCatalog()) {
   const flags={generated:true,preset:light.preset??'legacy',sourceFeatureId:light.sourceFeatureId??null};
   if(sourceId)flags.sourceId=sourceId;
   if(analysisSources.length)flags.analysisSources=[...analysisSources];
@@ -55,7 +58,7 @@ export function lightDataFromIntent(light,{x,y,spread='medium',sourceId=null,ana
     walls:true,
     vision:false,
     hidden:false,
-    config:resolvedLightConfig(light,catalog,spread),
+    config:resolvedLightConfig(light,catalog,spread,{allowPresetAnimationFallback}),
     flags:{[MODULE_ID]:flags}
   };
 }

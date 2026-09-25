@@ -31,9 +31,10 @@ the result and make any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.12** replaces the separate optional geometry and lighting passes
-with one required **Fit Foundry scene** exchange, combined preview, guarded apply,
-and frame-bound completion. The current source uses five required stages:
+**0.2.0-alpha.13** keeps the turnkey scene-fit workflow from alpha.12 and adds a
+runtime compatibility fallback: semantic light presets become steady lights when
+their preferred animation is not installed, while explicit unavailable animation
+overrides still fail before document creation. The current source uses five required stages:
 **Describe**, **Build**, **Generate map**, **Fit Foundry scene**, and **Test**.
 Geometry and lighting are no longer separate or skippable stages.
 
@@ -48,9 +49,9 @@ Geometry and lighting are no longer separate or skippable stages.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.12**.
+   **0.2.0-alpha.13**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.12)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.13)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -69,7 +70,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.12` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.13` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
@@ -229,8 +230,10 @@ uses Foundry's `rainbowswirl` effect and an unreliable lamp uses `flicker` when
 those animation keys are installed. Plans can supply bounded overrides for radius,
 angle, colour, alpha, attenuation, luminosity, saturation, contrast, shadows,
 animation speed, intensity and direction. Existing coordinate-based lights remain
-supported. An unavailable requested effect stops draft creation before Scene,
-Wall or AmbientLight documents are written instead of creating an inert light.
+supported. If a semantic preset's preferred animation is unavailable, Scene
+Architect creates a steady light with the same radii and colour. An unavailable
+explicit animation override still stops draft creation before Scene, Wall or
+AmbientLight documents are written.
 
 These lights are starting points, not visual acceptance. Map generation can move
 the painted source, add visible lamps, or omit an intended source, and every
