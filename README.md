@@ -31,12 +31,9 @@ the result and make any remaining corrections in Foundry.
 
 ## Current build and installation
 
-**0.2.0-alpha.11** removes the unused manual map scale and offset controls. The
-map stage now has three direct actions: choose the image, preview it with live
-walls, and apply it. Scene Architect consistently fits the complete image to the
-full scene.
-
-The current source uses five required stages:
+**0.2.0-alpha.12** replaces the separate optional geometry and lighting passes
+with one required **Fit Foundry scene** exchange, combined preview, guarded apply,
+and frame-bound completion. The current source uses five required stages:
 **Describe**, **Build**, **Generate map**, **Fit Foundry scene**, and **Test**.
 Geometry and lighting are no longer separate or skippable stages.
 
@@ -51,9 +48,9 @@ Geometry and lighting are no longer separate or skippable stages.
 
 3. Restart Foundry if it is running, then hard-refresh the browser.
 4. Open **Add-on Modules** and confirm Scene Architect reports
-   **0.2.0-alpha.11**.
+   **0.2.0-alpha.12**.
 
-The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.11)
+The [GitHub release](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.2.0-alpha.12)
 also provides `scene-architect.zip` for manual installation. Existing world
 scenes and uploaded artwork are preserved when updating.
 
@@ -72,7 +69,7 @@ powershell -NoProfile -File tools/package-module.ps1
 Extract `dist/scene-architect.zip` into that module directory. The archive has
 `module.json` at its root. It excludes tests, dependencies and experiments.
 
-For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.11` must
+For **Foundry's updater**, a published GitHub release tagged `v0.2.0-alpha.12` must
 contain `scene-architect.zip` and `module.json`. A source push alone does not create
 those assets and will cause a download “Not Found” error if the manifest points to
 an unpublished release. Prepare the release assets before exposing that manifest.
