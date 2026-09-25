@@ -1,14 +1,21 @@
-# Scene Architect
+---
+title: Scene Architect
+description: Build complete Foundry VTT scenes from a semantic brief and generated map
+---
 
 Scene Architect for Foundry VTT v14 creates **one coherently illustrated map with
-editable native walls, doors and lights**. You exchange a layout request and a map
-reference with ChatGPT manually. No API key, generator service or asset library is
-required.
+editable native walls, doors and lights**. You exchange a coordinate-free scene
+design request and a map reference with ChatGPT manually. Scene Architect then
+compiles the design locally into bounded rooms, circulation, openings, features
+and lights. No API key, generator service or asset library is required.
 
-The module generates the initial Foundry geometry from a plan, exports a PNG
-reference, and imports your finished map as a single background. Machinery,
-pipes and scenery can flow across grid boundaries. It does not assemble separate
-prop images or repeated texture tiles in the current wizard.
+The semantic response describes what the scene needs, not where each item goes.
+Scene Architect owns all coordinates and validates the complete result before
+making it available. Successful generation therefore cannot hand the wizard an
+invalid plan. The module exports a PNG reference from that plan and imports your
+finished map as a single background. Machinery, pipes and scenery can flow across
+grid boundaries. It does not assemble separate prop images or repeated texture
+tiles in the current wizard.
 
 New layout plans can describe lights by purpose, such as a magic portal, flame,
 flickering lamp, steady lamp or ambient fill. Scene Architect links non-ambient
@@ -16,10 +23,11 @@ lights to visible features, applies bounded defaults, and validates animation
 effects against the installed Foundry runtime before creating a scene.
 
 **Alignment is a starting point, not a guarantee.** An image generator can move or
-redraw architecture and light sources despite the reference. You can ask ChatGPT
-to analyse the finished image and separately import proposed geometry and native
-lighting through optional review steps. Scene Architect itself does not run an
-image detector. Review both results and make any remaining corrections in Foundry.
+redraw architecture and light sources despite the reference. The required
+**Fit Foundry scene** stage asks ChatGPT for geometry and lighting together,
+validates both responses before saving either one, and provides one combined
+preview and apply. Scene Architect itself does not run an image detector. Review
+the result and make any remaining corrections in Foundry.
 
 ## Current build and installation
 
@@ -28,9 +36,9 @@ map stage now has three direct actions: choose the image, preview it with live
 walls, and apply it. Scene Architect consistently fits the complete image to the
 full scene.
 
-The release retains the compact six-stage progress tracker from alpha.10, the
-finished-map lighting pass from alpha.9, and final-geometry correction from
-alpha.8.
+The current source uses five required stages:
+**Describe**, **Build**, **Generate map**, **Fit Foundry scene**, and **Test**.
+Geometry and lighting are no longer separate or skippable stages.
 
 ### Install or update in Foundry
 
@@ -72,11 +80,11 @@ an unpublished release. Prepare the release assets before exposing that manifest
 ## Intended flow
 
 1. As GM, open **Scenes → Scene Architect**. Load the laboratory example, or enter
-   a brief, **Copy layout request**, send it to ChatGPT and **Import / edit plan JSON**
-   with the returned layout. If validation rejects the plan, use **Copy correction
-   request** in the same ChatGPT conversation, then **Import corrected plan JSON**.
-   Scene Architect retains the rejected JSON and exact error while the wizard stays
-   open, and validates every corrected response again.
+   a brief, select **Copy scene design request**, and send it to ChatGPT. Select
+   **Import generated scene design** with the returned JSON. ChatGPT supplies room
+   purposes, contents and a circulation style; Scene Architect deterministically
+   chooses all geometry and advances directly to **Build draft scene** only when the
+   compiled plan is complete and valid.
 2. **Build draft scene**. This validates every wall and light first, then creates
    the scene, native walls, doors, purposeful lights and schematic reference
    background. It does not create prop Tiles.
@@ -87,31 +95,51 @@ an unpublished release. Prepare the release assets before exposing that manifest
    walls, blue lines are ordinary doors, and purple lines are secret doors. Toggle
    the overlay off to inspect the artwork alone, then **Apply map background**.
    The coloured overlay is never baked into the map.
-5. Optionally use **Fit geometry to the finished artwork**. Start with **Copy
-   same-chat geometry prompt** if you are still in the conversation that generated
-   the unchanged map. Otherwise use the fitted-image fallback described below.
-   You can also go directly to **View scene** and use Foundry's wall controls.
-6. Optionally use **Fit native lights to visible emitters**. Start with **Copy
-   same-chat lighting prompt** when the current conversation generated the unchanged
-   map, or export the fitted lighting comparison. Import and preview the complete
-   proposal, then apply it only after checking centres, bright/dim radii, effects,
-   removals and warnings.
-7. In Foundry, set scene darkness high enough to see the lights. Check their
+5. Use **Fit the Foundry scene**. Choose **Copy complete scene-fit prompt** in the
+   original map conversation. ChatGPT returns one wrapper containing geometry and
+   lighting. Import it, inspect the combined overlay, and apply it. For an external
+   image or different conversation, choose **Download comparison and copy prompt**,
+   attach that PNG, and send the prompt copied by Scene Architect.
+6. In Foundry, set scene darkness high enough to see the lights. Check their
    positions and effects, wall occlusion, doors, movement and token vision.
-8. Reopen the wizard to reuse the saved original image or import a replacement.
+7. Reopen the wizard to reuse the saved original image or import a replacement.
    Applying again preserves all current native walls, doors, lights and Tiles.
+
+The happy path uses five clipboard handoffs: scene request out, scene intent back,
+map prompt out, complete scene-fit prompt out, and complete scene-fit JSON back.
+You also attach one reference PNG and select one generated map image. The
+fitted-image scene-fit path adds one comparison PNG attachment but no second text
+exchange.
 
 Settings and file selections save when you apply. Leaving the file input empty
 reuses the saved source. The module always fits from the original image, avoiding
 repeated resampling of an already fitted background.
 
-## If ChatGPT returns an invalid plan
+## If a scene design cannot be compiled
 
-Scene Architect validates imported plan JSON before it creates anything. If the
-plan has overlapping props, invalid room geometry, blocked openings, missing
+The primary import accepts semantic scene intent, not authored geometry. Scene
+Architect rejects malformed input, unsupported contract versions or light presets,
+too many rooms, or contents that cannot fit without overlap. A failed import is
+atomic: it returns no partial plan, preserves the current valid plan if one exists,
+and never starts a plan-repair loop. Correct the scene-design JSON or revise the
+brief and request a new design.
+
+Current compilation limits are 20 requested rooms and 16 instances for each
+feature declaration. The compiler supports linear and central-corridor circulation;
+it chooses central-corridor by default for scenes with three or more rooms.
+
+## Advanced: low-level plan JSON and correction
+
+Expand **Advanced: import or edit low-level plan JSON** only when you intentionally
+need direct control over coordinates, room rectangles, openings and feature
+footprints. **Copy low-level plan request** preserves the earlier full-plan workflow
+for compatibility with saved plans and specialist editing.
+
+Scene Architect validates advanced low-level plan JSON before it creates anything.
+If the plan has overlapping props, invalid room geometry, blocked openings, missing
 light links or another structural problem:
 
-1. Read the persistent **Plan not accepted** message. It contains the exact first
+1. Read the persistent **Advanced plan not accepted** message. It contains the exact first
    validation error; your rejected JSON is retained while the wizard stays open.
 2. Select **Copy correction request**.
 3. Return to the same ChatGPT conversation and paste the request. It includes the
@@ -125,64 +153,41 @@ light links or another structural problem:
 
 Scene Architect does not silently move, shrink or delete props because several
 different fixes may be valid. It automates the feedback request and validates
-every retry. To start over instead, use **Copy fresh layout request instead**.
+every advanced low-level retry. To start over instead, use **Copy fresh low-level
+plan request**.
 
-## Optional: analyse the finished map and import geometry
+## Fit the finished map
 
-1. **Apply map background** first.
-2. If the unchanged downloaded image came from the current ChatGPT conversation,
-   select **Copy same-chat geometry prompt** and send it in that conversation.
-   Scene Architect includes a compact registered prior containing the current
-   Foundry wall vectors, planned open passages, room rectangles and feature
-   centres. ChatGPT can compare stable source IDs with the earlier source image
-   instead of rediscovering anonymous rooms. Scene Architect then applies the
-   saved full-scene fit locally. You do not attach the image again.
-3. The same-chat path is a convenience, not a guaranteed OpenAI capability. Use
-   the **Fallback: attach the exact fitted image** workflow when you edited the
-   image, changed conversations, imported an external map, or ChatGPT cannot inspect
-   its earlier output. Select **Export registered comparison image**, attach that
-   exact file, then select **Copy fitted-image analysis prompt**. The export places
-   thin labelled cyan wall vectors and dashed orange passage vectors over the
-   unchanged fitted artwork. They are translucent priors, not evidence that a
-   boundary is visible and are never applied to the scene background.
-4. Ask ChatGPT to return the complete geometry JSON. Every returned segment
-   identifies the source vectors it preserved, moved, changed, split or merged;
-   added segments use no source ID, and removed vectors are listed explicitly.
-   Scene Architect rejects unknown or conflicting source IDs. If ChatGPT omits
-   source bookkeeping, Scene Architect imports the complete network with a
-   mandatory review warning instead of making you regenerate it. Paste
-   the result into **Geometry JSON**, or
-   choose a JSON file, then **Import geometry for review**. A selected file takes
-   priority over pasted text. This saves the proposal and previews it; no walls change.
-5. If validation rejects the geometry, read the persistent **Geometry not accepted**
-   message and select **Copy geometry correction request**. Send it in the same
-   ChatGPT conversation, then paste the complete corrected response and select
-   **Import corrected geometry JSON**. The request includes the original registered
-   analysis contract, exact validator error and rejected response. The rejected JSON
-   remains in the wizard for manual editing, and native walls stay unchanged.
-6. Compare **Proposed geometry**, **Current geometry**, **Both** or **Artwork only**
-   using the overlay selector and **Preview geometry**. Proposed walls are mint,
-   doors pink and uncertain/plan-informed segments dashed orange. Dashed open
-   passages are review guides and create no blocking walls.
-7. Inspect the listed review notes and orange markers. Acknowledge review if any
-   segments are flagged, then **Apply proposed geometry** and confirm replacement.
-8. Test doors, movement and vision in Foundry. Adjust any remaining inaccuracies.
-   **Restore previous walls** returns to the snapshot taken before the last geometry
-   operation; the current walls then become the next restore snapshot.
+1. Apply the final map background.
+2. In the original image-generation conversation, choose **Copy complete
+   scene-fit prompt**. The prompt contains registered wall, passage, managed-light,
+   and protected-light context. Do not attach the image again.
+3. If the image was edited, imported externally, or generated elsewhere, choose
+   **Download comparison and copy prompt**. Attach that exact PNG and paste the
+   prompt copied by Scene Architect.
+4. Import the one returned `scene-fit` JSON wrapper. Scene Architect validates the
+   complete geometry and lighting objects independently. If either object fails,
+   neither proposal is saved. Use **Copy complete correction request** to retain
+   the full rejected response and exact domain-specific validator error.
+5. Inspect the combined overlay, acknowledge any flagged items, and choose
+   **Apply walls and managed lights**. Test the result in Foundry.
 
-**Apply proposed geometry replaces ALL walls and doors in the scene**, including
-manual edits and walls created by other modules. This avoids leaving old geometry
-blocking the proposed doorways. It preserves the background, lights, Tiles and
-tokens. Imported doors start closed. Restore also replaces all current walls,
-including edits made after applying. Both actions explicitly explain this before
-you confirm.
+**Apply walls and managed lights replaces ALL walls and doors plus every
+Scene Architect-managed light.** Manual and other-module lights are protected and
+remain unchanged. The operation also preserves the background, Tiles, and tokens.
+Imported doors start closed.
 
-The backup retains prior wall coordinates, settings, door states and custom flags.
-Replacement and restoration create new document IDs, so references to specific
-wall IDs in other modules may need updating. Only one restore snapshot is retained;
-export the scene in Foundry if you need a longer history. A durable backup is saved
-before applying. Partial failures attempt to remove staged walls and restore any
-deleted originals; failed recovery leaves the snapshot available for restoration.
+Independent backups retain prior walls and managed lights. Replacement and wall
+restoration create new wall document IDs, so references from other modules may
+need updating. Only one snapshot is retained for each domain. Export the scene in
+Foundry if you need a longer history.
+
+The combined apply rechecks the map frame, walls, managed lights, and protected
+lights before mutation. Under unchanged signatures, a lighting failure after wall
+replacement triggers compensating wall restoration. If another client changes the
+scene or compensation fails, Scene Architect stops rather than overwriting the
+changed state, preserves durable backups, and displays explicit recovery guidance.
+This is guarded compensation, not a claim of cross-client transaction atomicity.
 
 Analysis coordinates are normalized either to the unchanged generated source or
 to the fitted fallback image. Source coordinates are transformed and clipped to
@@ -191,9 +196,9 @@ never to grid squares. Diagonal segments are supported. The prompt includes an
 image or generation identifier and dimensions which the returned JSON must preserve.
 Changing the background path or scene dimensions invalidates the analysis. A newly
 selected image must be applied first. Editing native walls after preview
-requires another preview before applying. Editing native walls after copying an
-analysis prompt invalidates its registered prior, so copy or export a fresh request
-before importing the returned JSON. Do not modify the background file in place:
+requires another preview before applying. Editing native walls or lights after
+copying a scene-fit prompt invalidates its registered prior, so copy or export a
+fresh request before importing the returned JSON. Do not modify the background file in place:
 import it again so its new path invalidates old analysis.
 
 Validation checks schema, image identity, finite in-range coordinates, unique IDs,
@@ -201,9 +206,11 @@ nonzero lengths and overlapping spans, including solid walls covering doors or
 passages. Registered requests also require every current wall and planned open
 passage to be represented or explicitly removed; omissions are treated as proposed
 removals and require explicit review. Unknown document fields are discarded.
-Limits: 1 MB of JSON and 2000 segments. These checks do not prove visual
-accuracy, connected rooms or leak-free vision. Secret doors and plan-informed
-geometry are always marked for review.
+The combined wrapper is limited to 2 MB. Geometry remains limited to 2000
+segments, and lighting remains limited to 100 proposed lights. These checks do not
+prove visual accuracy, connected rooms, leak-free vision, shader appearance, or
+token-vision quality. Secret doors and plan-informed geometry are always marked
+for review.
 
 There is no API service or automatic model call. The same-chat path adds one text
 exchange. The fallback adds one image-and-text exchange. The earlier laboratory
@@ -230,43 +237,29 @@ Wall or AmbientLight documents are written instead of creating an inert light.
 
 These lights are starting points, not visual acceptance. Map generation can move
 the painted source, add visible lamps, or omit an intended source, and every
-Foundry theme or world may display an effect differently. Applying analysed
-geometry never replaces or moves light documents. Use the independent finished-map
-lighting workflow when the artwork and native lights differ.
+Foundry theme or world may display an effect differently. The required scene-fit
+stage compares these managed lights with tangible emitters while fitting geometry
+in the same exchange.
 
-## Optional: fit native lights to the finished map
+## Scene-fit lighting safety
 
-1. Apply the final map background first.
-2. In the original image-generation conversation, choose **Copy same-chat lighting
-   prompt**. It sends registered managed-light and protected-light context while
-   asking ChatGPT to inspect the image already in that conversation; do not attach
-   the image again.
-3. If the image was edited, imported externally, generated in another conversation,
-   or unavailable to ChatGPT, choose **Export light comparison image**. Attach that
-   exact file, then choose **Copy fitted-image lighting prompt**. Labels beginning
-   `M` identify Scene Architect-managed lights; labels beginning `P` identify
-   protected lights.
-4. Import the complete returned lighting JSON. Scene Architect validates the
-   request/image identity, coordinates, semantic preset, `small`/`medium`/`large`
-   spread, optional colour, evidence, source correspondence, removals, runtime
-   animation availability, and all managed source IDs. Limits are 1 MB and 100
-   proposed lights.
-5. If validation fails, choose **Copy lighting correction request**. The request
-   includes the exact validator error, rejected response, original registered
-   contract and untrusted-data boundary. Import the complete corrected object; a
-   patch or partial fragment is not accepted.
-6. Compare **Current**, **Proposed**, **Both**, or **Artwork only**. Solid inner
-   circles are bright radii and patterned outer circles are dim radii. Labels and
-   the text list provide the same information without relying on colour alone.
-7. Review every centre, preset, spread, resolved bright/dim radius, colour,
-   animation, evidence, source change and warning. A model can mistake reflections
-   or baked illumination for emitters; only tangible lamps, flames, portals and
-   similar sources should become native lights.
-8. Choose **Apply managed lights**. Scene Architect replaces only lights carrying
-   its generated ownership flag. Manual and other-module lights are protected and
-   remain unchanged. Walls, the background, Tiles and tokens also remain unchanged.
-9. Use **Restore previous managed lights** for one-level undo. Lighting backup and
-   restoration are separate from wall backup and restoration.
+The combined response still uses the dedicated lighting validator. It checks
+request and image identity, coordinates, semantic preset,
+`small`/`medium`/`large` spread, optional colour, evidence, source
+correspondence, removals, runtime animation availability, and all managed source
+IDs. A partial lighting object or geometry-only response cannot advance the
+workflow.
+
+The combined preview shows current and proposed light centres and radii alongside
+current and proposed geometry. Solid inner circles are bright radii and patterned
+outer circles are dim radii. Review every centre, preset, spread, resolved radius,
+colour, animation, source change, and warning. A model can mistake reflections or
+baked illumination for emitters. Only tangible lamps, flames, portals, and similar
+sources should become native lights.
+
+The apply operation replaces only lights carrying the Scene Architect ownership
+flag. Manual and other-module lights are protected. **Restore previous managed
+lights** provides one-level light undo independently of **Restore previous walls**.
 
 Every request signs the current background fit, managed lights and protected
 light context. Adding, moving, resizing, recolouring, reconfiguring or deleting any
@@ -301,14 +294,13 @@ visual acceptance gate.
    block the import. Open/close the doors and test token vision and collision.
 5. Close/reopen the wizard and refresh the browser. Confirm the saved image returns.
    Preview and reapply the saved source; native geometry must stay fixed.
-6. Export the analysis image, request geometry, import it and compare the overlays.
-   Confirm that import alone changes no walls. Review the markers and apply.
-7. Request finished-map lighting, import it, and compare current and proposed
-   centres plus radii. Confirm that import alone changes no native lights. Apply,
-   verify the protected GM light remains unchanged, then **Restore previous managed
-   lights**.
-8. Test doors and token vision, then **Restore previous walls**. Check the prior
-   geometry and door states return while artwork, lights and Tiles stay unchanged.
+6. Request one complete scene fit, import it, and compare current and proposed
+   walls and light radii in the combined overlay. Confirm that import alone changes
+   no native documents. Apply and verify that the protected GM light remains
+   unchanged.
+7. Test doors and token vision, then use **Restore previous managed lights** and
+   **Restore previous walls**. Check that each prior snapshot returns without
+   overwriting the other domain, artwork, or Tiles.
 
 To test the import mechanics before generating art, use the exported reference PNG
 as the input image. Its labels are part of that test image and will remain visible;
@@ -324,8 +316,8 @@ The initial fit maps the image's full rectangle to the scene's full rectangle.
 A different aspect ratio stretches the image; both preview and confirmation warn
 about this. Request the reference's aspect ratio and inspect the result. The wizard
 does not expose manual scale or offset controls. Those global adjustments cannot
-correct local changes in room shape; use the optional geometry-fitting pass or edit
-the relevant Foundry walls instead.
+correct local changes in room shape; complete the required scene-fit stage, then
+edit any remaining local differences with Foundry's wall controls.
 
 The overlay always reads **live wall coordinates and door types**. Geometry
 changes are advisory, not a requirement to undo your work. Exported references
@@ -334,9 +326,9 @@ come from the original plan. They do not reconstruct rooms from edited walls.
 
 Native edits are stored by Foundry. **Download original plan JSON** exports the
 original plan; it does not include your subsequent wall edits or imported map.
-**Import / edit plan JSON** and **Build a new scene from plan** start a new scene
-and leave the previous scene intact. Use Foundry's scene export and copy its
-referenced image files when transferring a finished scene.
+**Import / edit low-level plan JSON** and **Build a new scene from plan** start a
+new scene and leave the previous scene intact. Use Foundry's scene export and copy
+its referenced image files when transferring a finished scene.
 
 The wizard supports one level, zero scene padding/grid shift, and default level
 background transforms. New drafts use those settings. If changed externally,
@@ -360,16 +352,17 @@ fit metadata are in `flags.scene-architect.map`. A revision marker rejects stale
 saves from another wizard (best effort, not a distributed lock).
 
 Analysis state uses `flags.scene-architect.geometryRequest`, `geometryProposal`
-and `geometryBackup`. Proposals and backups survive closing/reopening the wizard.
-Do not run simultaneous geometry operations from different GM clients; scene checks
-and the local operation guard are best effort, not a server-side transaction.
+and `geometryBackup`, plus matching `lightingRequest`, `lightingProposal`, and
+`lightingBackup` flags. The primary workflow creates and consumes both domains as
+one scene-fit bundle. Independent flags preserve validator boundaries and recovery
+snapshots.
 
-Lighting analysis uses separate `lightingRequest`, `lightingProposal` and
-`lightingBackup` flags. A valid proposal survives reopening until its background
-fit, managed lights or protected context changes. Applying or restoring
-lights clears the consumed request/proposal and retains a one-level managed-light
-backup. Lighting operations have their own local guard and never call the wall
-transaction.
+Successful application writes `flags.scene-architect.sceneFit` with the exact map
+frame. Replacing the map invalidates that marker and returns the workflow to
+**Fit Foundry scene**. Manual wall or light edits after a successful fit remain
+supported and do not clear completion. Do not run simultaneous scene-fit
+operations from different GM clients. Scene signatures and the local operation
+guard are best effort, not a server-side transaction.
 
 If an upload fails, the current background stays in place. A background-update
 failure attempts to restore it; the uploaded source/settings may already be saved
@@ -379,8 +372,11 @@ so you can retry. Server-side partial failures can require manual recovery.
 
 - Initial plans use rectangular rooms and orthogonal walls. You can edit native
   walls freely afterward; the module does not rebuild them on image import.
-- No built-in automatic tracing, image segmentation, per-asset imports or API generation.
-  Geometry analysis is a manual exchange followed by a reviewed JSON import.
+- Semantic scene generation supports bounded linear and central-corridor layouts.
+  It guarantees structural validity, not a unique or artistically optimal layout.
+- No built-in automatic tracing, image segmentation, per-asset imports or model
+  API integration. Geometry analysis is a manual exchange followed by a reviewed
+  JSON import.
 - No guarantee that generated room shapes, door positions or feature counts
   match the reference. Native geometry follows the plan until you adjust it.
 - Doors drawn into the artwork remain static. The prompt requests ordinary doors
@@ -405,30 +401,34 @@ The browser harness uses isolated headless Edge on Windows. Set
 `SCENE_ARCHITECT_BROWSER` to another Chromium executable if necessary. It writes
 results, a reference PNG and a wizard screenshot to ignored `test-output/`.
 
-Local verification for the current source: **59 unit tests and 93 browser assertions**
-passed. Coverage includes plan-validation correction and retry, full-map import,
-exact output dimensions, live edited
-wall overlays, omission of overlays from the uploaded background, automatic fit,
-saved-source reuse, preservation of native edits and Tiles, cancelled application,
-upload failure and background rollback. Retained legacy renderer checks also run.
+Local verification for the current source: **73 unit tests and 106 browser assertions**
+passed. Coverage includes coordinate-free scene-intent prompting, deterministic
+compilation across both circulation styles and 1–20 requested rooms, atomic
+capacity failure, advanced plan-validation correction and retry, full-map import,
+exact output dimensions, live edited wall overlays, omission of overlays from the
+uploaded background, automatic fit, saved-source reuse, preservation of native
+edits and Tiles, cancelled application, upload failure and background rollback.
+Retained legacy renderer checks also run.
 Additional coverage includes analysis-image export, image identity, invalid/overlapping
 geometry, final-geometry correction and retry, review acknowledgement, cancelled
 replacement, stale previews, preservation of other scene documents, saved proposals,
 restoration and partial write recovery.
-Finished-map lighting coverage includes managed/protected registration, same-chat
-source transforms, semantic spread resolution, correction and retry, labelled
-visual and textual review, stale protected-context rejection, managed-only
-replacement, rollback and one-level restoration.
+Combined scene-fit coverage includes atomic geometry and lighting validation, one
+same-chat wrapper prompt, one fallback comparison, a combined overlay, protected
+light preservation, compensated lighting failure, frame-bound completion, and
+independent one-level wall and managed-light restoration.
 The reference and wizard screenshot were visually inspected.
 
 Canvas rendering and PNG encoding/decoding run in a real browser. **Foundry host,
 document and upload APIs are mocked.** Verification on the user's Foundry server
 remains necessary.
 
-Code: `scene-architect.js` owns the wizard; `image-geometry.js` handles wall
+Code: `scene-architect.js` owns the wizard; `plan-generator.js` compiles semantic
+scene intent into validator-approved plans; `image-geometry.js` handles wall
 analysis prompts, validation, overlays, replacement and recovery;
-`image-lighting.js` independently handles managed/protected light registration,
-validation, comparison, correction, replacement and restoration; `whole-map.js`
+`image-lighting.js` handles managed/protected light registration, validation,
+comparison, replacement and restoration; `scene-fit.js` composes both contracts
+and guards the combined operation; `whole-map.js`
 handles references, prompts and full-map rendering; `plan.js`, `geometry.js` and
 `foundry-data.js` provide initial geometry and deterministic light configuration;
 `project.js` saves project state. Legacy art modules are retained for compatibility.

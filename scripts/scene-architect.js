@@ -1,5 +1,6 @@
 import { wallDataFromSegment, lightDataFromPlan, lightAnimationCatalog, lightAnimationKeys, availableLightPresetKeys } from "./foundry-data.js";
 import { normalizePlan, validatePlan, planWarnings } from "./plan.js";
+import { buildSceneIntentPrompt, compileSceneIntent } from "./plan-generator.js";
 import { compileGeometry } from "./geometry.js";
 import { migrateArt, validateArt } from "./art-manifest.js";
 import { loadImage, canvasBlob } from "./renderer.js";
@@ -9,6 +10,9 @@ import {renderGuide, wholeMapPrompt, renderWholeMap, mapAlignment, assertMapFram
 
 import {analysisFrame, analysisPrompt, backgroundPath, buildRegistrationPrior, validateImageGeometry, proposedWallData, drawProposal, drawRegistrationPrior, wallSignature, replaceSceneWalls} from './image-geometry.js';
 import {buildLightRegistrationPrior, buildLightRepairPrompt, drawLightComparison, drawLightRegistrationPrior, lightAnalysisPrompt, managedLightSignature, proposedLightData, protectedLightSignature, replaceSceneLights, validateImageLighting} from './image-lighting.js';
+import {buildSceneFitPrompt,buildSceneFitRepairPrompt,drawSceneFitPrior,drawSceneFitProposal,replaceSceneFit,validateSceneFit} from './scene-fit.js';
+
+export { buildSceneIntentPrompt };
 
 const MODULE_ID = "scene-architect";
 const MODULE_TITLE = "Scene Architect";
@@ -163,16 +167,18 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   static DEFAULT_OPTIONS={
     id:'scene-architect-app',classes:['scene-architect'],tag:'div',position:{width:820,height:850},
     window:{title:'Scene Architect — complete map',icon:'fa-solid fa-drafting-compass',resizable:true},
-    actions:Object.fromEntries(['copyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','copySourceAnalysisPrompt','exportAnalysisImage','copyAnalysisPrompt','copyGeometryRepairPrompt','importGeometry','previewGeometry','applyGeometry','restoreGeometry','copySourceLightingPrompt','exportLightingImage','copyLightingPrompt','copyLightRepairPrompt','importLighting','previewLighting','applyLighting','restoreLighting','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
+    actions:Object.fromEntries(['copyLayoutPrompt','copyLegacyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildDraft','viewScene','exportGuide','downloadPlan','copyMapPrompt','previewMap','applyMap','copySceneFitPrompt','exportSceneFitImage','copySceneFitRepairPrompt','importSceneFit','previewSceneFit','applySceneFit','copySourceAnalysisPrompt','exportAnalysisImage','copyAnalysisPrompt','copyGeometryRepairPrompt','importGeometry','previewGeometry','applyGeometry','restoreGeometry','copySourceLightingPrompt','exportLightingImage','copyLightingPrompt','copyLightRepairPrompt','importLighting','previewLighting','applyLighting','restoreLighting','reopen','newProject'].map(name=>[name,async function(event,target){await this.run(name,target);}]))
   };
   static PARTS={main:{template:`modules/${MODULE_ID}/templates/scene-architect.hbs`}};
 
   constructor(options={}) {
     super(options);
-    this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};
+    this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',intentPromptCopiedAt:null,plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};
     this.geometryRepair=null;
     this.lightRepair=null;
     this.lightPreview=null;
+    this.sceneFitRepair=null;
+    this.sceneFitPreview=null;
     this.busy=false;
   }
 
@@ -199,42 +205,62 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     const review=proposal?[...proposal.walls,...proposal.openings].filter(s=>s.reviewRequired):[];
     const lightReview=lightProposal?.lights.filter(light=>light.reviewRequired)??[];
     const referenceReady=!!this.workflow.generation?.referenceExportedAt,sameChatReady=!!map?.generationId;
-    const lightingRequest=scene?.getFlag(MODULE_ID,'lightingRequest'),hasLightingBackup=!!scene?.getFlag(MODULE_ID,'lightingBackup'),lightingStarted=!!(lightProposal||lightRepair||lightingRequest||hasLightingBackup||scene?.getFlag(MODULE_ID,'geometryBackup'));
-    const lightingNext=lightRepair?(lightRepair.promptCopiedAt?'importLighting':'copyLightRepairPrompt'):lightProposal?'previewLighting':lightingRequest?.promptCopiedAt&&!lightingWarning?'importLighting':hasLightingBackup?'viewScene':sameChatReady?'copySourceLightingPrompt':'exportLightingImage';
-    const geometryNext=geometryRepair?(geometryRepair.promptCopiedAt?'importGeometry':'copyGeometryRepairPrompt'):!proposal?(sameChatReady?'copySourceAnalysisPrompt':'exportAnalysisImage'):'previewGeometry';
-    const next=repair?(repair.promptCopiedAt?'pastePlan':'copyPlanRepairPrompt'):!p?'copyLayoutPrompt':!scene?'buildDraft':!map?.src?(!referenceReady?'exportGuide':!this.workflow.generation.promptCopiedAt?'copyMapPrompt':'previewMap'):geometryRepair?geometryNext:lightingStarted?lightingNext:geometryNext;
-    const actionSteps={
+    const geometryRequest=scene?.getFlag(MODULE_ID,'geometryRequest'),lightingRequest=scene?.getFlag(MODULE_ID,'lightingRequest'),hasGeometryBackup=!!scene?.getFlag(MODULE_ID,'geometryBackup'),hasLightingBackup=!!scene?.getFlag(MODULE_ID,'lightingBackup');
+    let sceneFitComplete=false,currentAnalysisFrame=null;
+    if(scene&&map?.src) {
+      try {
+        currentAnalysisFrame=analysisFrame(scene);
+        sceneFitComplete=scene.getFlag(MODULE_ID,'sceneFit')?.frame===currentAnalysisFrame;
+      }
+      catch (_) {sceneFitComplete=false;}
+    }
+    const fitProposal=proposal&&lightProposal?{kind:'scene-fit',version:1,geometry:proposal,lighting:lightProposal}:null;
+    const fitRequestReady=geometryRequest?.promptCopiedAt&&lightingRequest?.promptCopiedAt&&geometryRequest.frame===currentAnalysisFrame&&lightingRequest.frame===currentAnalysisFrame&&geometryRequest.wallSignature===wallSignature(scene)&&lightingRequest.managedSignature===managedLightSignature(scene)&&lightingRequest.protectedSignature===protectedLightSignature(scene);
+    const fitNext=this.sceneFitRepair?(this.sceneFitRepair.promptCopiedAt?'importSceneFit':'copySceneFitRepairPrompt'):fitProposal?'previewSceneFit':fitRequestReady?'importSceneFit':sameChatReady?'copySceneFitPrompt':'exportSceneFitImage';
+    const legacyLightingStarted=!!(lightProposal||lightRepair||lightingRequest||hasLightingBackup||hasGeometryBackup);
+    const legacyLightingNext=lightRepair?(lightRepair.promptCopiedAt?'importLighting':'copyLightRepairPrompt'):lightProposal?'previewLighting':lightingRequest?.promptCopiedAt&&!lightingWarning?'importLighting':hasLightingBackup?'viewScene':sameChatReady?'copySourceLightingPrompt':'exportLightingImage';
+    const legacyGeometryNext=geometryRepair?(geometryRepair.promptCopiedAt?'importGeometry':'copyGeometryRepairPrompt'):!proposal?(sameChatReady?'copySourceAnalysisPrompt':'exportAnalysisImage'):'previewGeometry';
+    const commonNext=repair?(repair.promptCopiedAt?'pastePlan':'copyPlanRepairPrompt'):!p?(this.workflow.intentPromptCopiedAt?'pastePlan':'copyLayoutPrompt'):!scene?'buildDraft':!map?.src?(!referenceReady?'exportGuide':!this.workflow.generation.promptCopiedAt?'copyMapPrompt':'previewMap'):null;
+    const next=commonNext??(this.workflow.legacySeparateFit?(legacyGeometryNext&&geometryRepair?legacyGeometryNext:legacyLightingStarted?legacyLightingNext:legacyGeometryNext):sceneFitComplete?'viewScene':fitNext);
+    const actionSteps=this.workflow.legacySeparateFit?{
       copyLayoutPrompt:1,copyPlanRepairPrompt:1,pastePlan:1,buildDraft:1,
       exportGuide:2,copyMapPrompt:2,previewMap:3,applyMap:3,
       copySourceAnalysisPrompt:4,exportAnalysisImage:4,copyGeometryRepairPrompt:4,importGeometry:4,previewGeometry:4,applyGeometry:4,
       copySourceLightingPrompt:5,exportLightingImage:5,copyLightRepairPrompt:5,importLighting:5,previewLighting:5,applyLighting:5,
       viewScene:6
+    }:{
+      copyLayoutPrompt:1,copyPlanRepairPrompt:1,pastePlan:1,buildDraft:1,
+      exportGuide:2,copyMapPrompt:2,previewMap:3,applyMap:3,
+      copySceneFitPrompt:4,exportSceneFitImage:4,copySceneFitRepairPrompt:4,importSceneFit:4,previewSceneFit:4,applySceneFit:4,
+      viewScene:5
     };
-    const activeStep=actionSteps[next]??1,completed={1:!!scene,2:!!(map?.src||this.workflow.generation?.promptCopiedAt),3:!!map?.src,4:!!scene?.getFlag(MODULE_ID,'geometryBackup'),5:hasLightingBackup};
+    const completed=this.workflow.legacySeparateFit?{1:!!scene,2:!!(map?.src||this.workflow.generation?.promptCopiedAt),3:!!map?.src,4:hasGeometryBackup,5:hasLightingBackup}:{1:!!scene,2:!!(map?.src||this.workflow.generation?.promptCopiedAt),3:!!map?.src,4:sceneFitComplete};
+    const activeStep=actionSteps[next]??1;
     const step=(number,short)=>{
       let state='locked',label='Later';
       if(number===activeStep) {state='current';label='Current';}
       else if(completed[number]) {state='complete';label='Complete';}
-      else if((number===4||number===5)&&map?.src) {state='optional';label='Optional';}
-      else if(number===6&&map?.src) {state='ready';label='Ready';}
+      else if(this.workflow.legacySeparateFit&&(number===4||number===5)&&map?.src) {state='optional';label='Optional';}
+      else if(this.workflow.legacySeparateFit&&number===6&&map?.src||!this.workflow.legacySeparateFit&&number===5&&sceneFitComplete) {state='ready';label='Ready';}
       else if(number===activeStep+1) {state='upcoming';label='Next';}
       return {number,short,state,className:`is-${state}`,label,complete:state==='complete',current:state==='current'};
     };
-    const steps=[step(1,'Plan'),step(2,'Generate'),step(3,'Import'),step(4,'Geometry'),step(5,'Lights'),step(6,'Test')];
+    const steps=this.workflow.legacySeparateFit?[step(1,'Plan'),step(2,'Generate'),step(3,'Import'),step(4,'Geometry'),step(5,'Lights'),step(6,'Test')]:[step(1,'Plan'),step(2,'Generate'),step(3,'Import'),step(4,'Fit'),step(5,'Test')];
     const lightData=lightProposal?proposedLightData(lightProposal,scene,lightAnimationCatalog()):[];
     return {...this.workflow,hasPlan:!!p,sceneReady:!!scene,sceneNameLinked:scene?.name,referenceReady,sameChatReady,next:{[next]:true},
       steps,step1:steps[0],step2:steps[1],step3:steps[2],step4:steps[3],step5:steps[4],step6:steps[5],
-      step1Open:steps[0].current||!!repair,step2Open:steps[1].current,step3Open:steps[2].current,step4Open:steps[3].current,step5Open:steps[4].current,step6Open:steps[5].current,
+      step1Open:steps[0].current||!!repair,step2Open:steps[1].current,step3Open:steps[2].current,step4Open:steps[3].current,step5Open:steps[4].current,step6Open:steps[5]?.current,
       projects:[...game.scenes].filter(s=>s.getFlag(MODULE_ID,'plan')).map(s=>({id:s.id,name:s.name,selected:s.id===scene?.id})),
       editedGeometry:scene&&p?geometryConflict(scene,p):null,
       legacyTiles:scene?[...scene.tiles].filter(t=>t.flags?.[MODULE_ID]?.generated).length:0,
       warnings:p?planWarnings(p):[],planJson:p?JSON.stringify(p,null,2):'',
       planSummary:p?`${p.spaces.length} rooms · ${p.features.length} illustrated features · one complete map`:'',
       analysisReady:!!map?.src,geometryJson:geometryRepair?.json??(proposal?JSON.stringify(proposal,null,2):''),hasProposal:!!proposal,analysisWarning,geometryRepair,
+      sceneFitJson:this.sceneFitRepair?.json??(fitProposal?JSON.stringify(fitProposal,null,2):''),sceneFitRepair:this.sceneFitRepair,hasSceneFitProposal:!!fitProposal,sceneFitComplete,
       geometrySummary:proposal?`${proposal.walls.length} wall/door segments · ${proposal.openings.length} open passages · ${review.length} review markers${proposal.registrationReviewRequired?' · source accounting needs review':''}`:'',
       geometryReview:review.map(s=>`${s.id}: ${s.note||'Check this segment against the artwork.'}`),geometryNotes:proposal?.reviewNotes??[],
       registrationReviewNote:proposal?.registrationReviewNote,
-      hasGeometryBackup:!!scene?.getFlag(MODULE_ID,'geometryBackup'),
+      hasGeometryBackup,
       lightingJson:lightRepair?.json??(lightProposal?JSON.stringify(lightProposal,null,2):''),hasLightProposal:!!lightProposal,lightingWarning,lightRepair,
       lightingSummary:lightProposal?`${lightProposal.lights.length} proposed lights · ${lightProposal.removedSourceIds.length} managed removals · ${lightReview.length} review markers`:'',
       lightingReview:lightReview.map(light=>`${light.name}: ${light.note||'Check this source and effect against the artwork.'}`),lightingNotes:lightProposal?.reviewNotes??[],
@@ -242,7 +268,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       lightingDetails:lightProposal?.lights.map((light,index)=>{const data=lightData[index];return `${light.name} — ${light.preset}, ${light.spread}; bright ${data.config.bright}, dim ${data.config.dim} ${scene.grid?.units??p.scene.units}; ${data.config.color}; animation ${data.config.animation.type||'steady'}; ${light.evidence}; ${light.note||'no additional review note'}.`;})??[],
       managedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated).length:0,
       protectedLightCount:scene?[...(scene.lights??[])].filter(light=>light.flags?.[MODULE_ID]?.generated!==true).length:0,
-      hasLightingBackup,
+      hasLightingBackup,sceneFitRecovery:scene?.getFlag(MODULE_ID,'sceneFitRecovery'),
       mapSource:map?.src};
   }
 
@@ -250,16 +276,23 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
   usePlan(p) {
     this.geometryRepair=null;
     this.lightRepair=null;this.lightPreview=null;
-    this.workflow={plan:p,planRepair:null,sceneId:null,revision:null,map:null,generation:null,sceneName:p.scene.name,columns:p.scene.columns,rows:p.scene.rows,gridSize:p.scene.gridSize,brief:p.scene.description};
+    this.sceneFitRepair=null;this.sceneFitPreview=null;
+    this.workflow={plan:p,planRepair:null,intentPromptCopiedAt:null,sceneId:null,revision:null,map:null,generation:null,sceneName:p.scene.name,columns:p.scene.columns,rows:p.scene.rows,gridSize:p.scene.gridSize,brief:p.scene.description};
   }
   async persist() {if(this.scene)await saveProject(this.scene,this.workflow);}
   async reopen() {
     const id=this.element.querySelector('[name="projectId"]').value;
     if(!id)return;
-    this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.workflow=projectFromScene(game.scenes.get(id));await this.render();
+    this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.sceneFitRepair=null;this.sceneFitPreview=null;this.workflow=projectFromScene(game.scenes.get(id));await this.render();
   }
-  async newProject() {this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};await this.render();}
-  async copyLayoutPrompt() {this.syncForm();await copyText(buildLayoutPrompt(this.workflow,lightAnimationKeys()));}
+  async newProject() {this.geometryRepair=null;this.lightRepair=null;this.lightPreview=null;this.sceneFitRepair=null;this.sceneFitPreview=null;this.workflow={sceneName:'New Scene',columns:34,rows:28,gridSize:70,brief:'',intentPromptCopiedAt:null,plan:null,planRepair:null,sceneId:null,revision:null,map:null,generation:null};await this.render();}
+  async copyLayoutPrompt() {
+    this.syncForm();
+    await copyText(buildSceneIntentPrompt({...this.workflow,animations:lightAnimationKeys()}));
+    this.workflow.intentPromptCopiedAt=Date.now();
+    await this.render();
+  }
+  async copyLegacyLayoutPrompt() {this.syncForm();await copyText(buildLayoutPrompt(this.workflow,lightAnimationKeys()));}
   async copyPlanRepairPrompt() {
     this.syncForm();
     const repair=this.workflow.planRepair;
@@ -268,19 +301,29 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     repair.promptCopiedAt=Date.now();
     await this.render();
   }
-  async pastePlan() {
+  async pastePlan(target) {
     this.syncForm();
-    const candidate=this.workflow.planRepair?.json??(this.plan?JSON.stringify(this.plan,null,2):'');
-    const result=await DialogV2.input({window:{title:'Import or edit plan — creates a new draft'},content:`<p>Changing geometry starts a new project. Build a new scene to apply it; the current scene is preserved.</p><textarea name="json" style="width:100%;height:400px">${esc(candidate)}</textarea>`,ok:{label:'Validate & import'},rejectClose:false});
+    const advanced=target?.dataset.mode==='advanced';
+    const candidate=advanced?(this.workflow.planRepair?.json??(this.plan?JSON.stringify(this.plan,null,2):'')):'';
+    const title=advanced?'Import or edit low-level plan':'Import generated scene design';
+    const guidance=advanced
+      ? 'Advanced plan JSON is validated exactly as supplied. Changing geometry starts a new project; the current scene is preserved.'
+      : 'Paste the coordinate-free scene design from ChatGPT. Scene Architect will construct and validate the complete plan locally.';
+    const result=await DialogV2.input({window:{title},content:`<p>${guidance}</p><textarea name="json" style="width:100%;height:400px">${esc(candidate)}</textarea>`,ok:{label:advanced?'Validate & import plan':'Build valid plan'},rejectClose:false});
     if(!result?.json)return;
+    let parsed;
     try {
-      this.usePlan(validateArt(migrateArt(validatePlan(normalizePlan(JSON.parse(result.json),this.workflow)))));
+      parsed=JSON.parse(result.json);
+      const plan=advanced
+        ? validateArt(migrateArt(validatePlan(normalizePlan(parsed,this.workflow))))
+        : compileSceneIntent(parsed,this.workflow);
+      this.usePlan(plan);
     } catch(error) {
-      this.workflow.planRepair={json:result.json,error:error instanceof Error?error.message:String(error)};
+      if(advanced)this.workflow.planRepair={json:result.json,error:error instanceof Error?error.message:String(error)};
       await this.render();
       throw error;
     }
-    await this.render();ui.notifications.info('Plan imported. Build a draft to save this project in Foundry.');
+    await this.render();ui.notifications.info(parsed?.kind==='scene-intent'?'Valid plan built. Build a draft to save this project in Foundry.':'Plan imported. Build a draft to save this project in Foundry.');
   }
   async loadExample() {
     const response=await fetch(`modules/${MODULE_ID}/fixtures/laboratory.json`);if(!response.ok)throw new Error('Could not load laboratory fixture.');
@@ -365,7 +408,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       '<p>This replaces the scene background. Your current walls, doors, lights and Tiles stay in place.</p>'+
       (mismatch?'<p><strong>The image has a different aspect ratio. Full-frame fit stretches it to the scene dimensions.</strong> Check the overlay preview before continuing.</p>':'')+
       (existing?`<p>${existing} older Scene Architect prop Tiles will still be visible above the map. Use a new draft or remove unwanted Tiles in Foundry.</p>`:'')+
-      '<p>After applying, use Foundry’s wall controls to correct any local differences. No walls are detected from the image.</p>',rejectClose:false}))return;
+      '<p>After applying, continue to the required scene-fit stage to align walls, doors and managed lights with the artwork.</p>',rejectClose:false}))return;
     // Check the saved revision before uploads, and again before committing the source.
     await this.persist();
     const backgroundCanvas=renderWholeMap(image,scene,alignment,false),stamp=crypto.randomUUID();
@@ -377,7 +420,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     try {await this.persist();}catch(e){this.workflow.map=old;throw e;}
     await applyWholeMap(scene,background,setLevelBackground);
     await this.render();
-    ui.notifications.info('Complete map applied. Review and adjust native walls, doors and lights in Foundry. Reimporting preserves those edits.');
+    ui.notifications.info('Complete map applied. Continue to the required Fit Foundry scene stage.');
   }
 
   assertAnalysisReady() {
@@ -524,6 +567,117 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     }
     return request;
   }
+  async sceneFitRequests(mode) {
+    const geometryRequest=await this.analysisRequest(mode);
+    const lightingRequest=await this.lightingRequest(mode);
+    return {geometryRequest,lightingRequest};
+  }
+  async copySceneFitPrompt() {
+    this.sceneFitRepair=null;
+    const requests=await this.sceneFitRequests('source');
+    await copyText(buildSceneFitPrompt(this.plan,{...requests,availablePresets:availableLightPresetKeys(lightAnimationCatalog())}));
+    const copiedAt=Date.now();
+    requests.geometryRequest.promptCopiedAt=copiedAt;
+    requests.lightingRequest.promptCopiedAt=copiedAt;
+    await this.scene.setFlag(MODULE_ID,'geometryRequest',requests.geometryRequest);
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',requests.lightingRequest);
+    await this.render();
+  }
+  async exportSceneFitImage() {
+    this.sceneFitRepair=null;
+    const requests=await this.sceneFitRequests('fitted'),image=await loadImage(backgroundPath(this.scene));
+    const canvas=drawSceneFitPrior(renderWholeMap(image,this.scene,{},false),requests,this.scene);
+    const blob=await canvasBlob(canvas);
+    if(requests.geometryRequest.frame!==analysisFrame(this.scene)||requests.geometryRequest.wallSignature!==wallSignature(this.scene)||requests.lightingRequest.managedSignature!==managedLightSignature(this.scene)||requests.lightingRequest.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Background, walls or lights changed while exporting. Try again.');
+    downloadBlob(`${slugify(this.scene.name)}-fit-${requests.geometryRequest.imageId}.png`,blob);
+    await copyText(buildSceneFitPrompt(this.plan,{...requests,availablePresets:availableLightPresetKeys(lightAnimationCatalog())}));
+    const copiedAt=Date.now();
+    requests.geometryRequest.promptCopiedAt=copiedAt;
+    requests.lightingRequest.promptCopiedAt=copiedAt;
+    await this.scene.setFlag(MODULE_ID,'geometryRequest',requests.geometryRequest);
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',requests.lightingRequest);
+    await this.render();
+    ui.notifications.info('Scene-fit comparison downloaded and the single combined prompt copied.');
+  }
+  async copySceneFitRepairPrompt() {
+    const repair=this.sceneFitRepair,geometryRequest=this.scene.getFlag(MODULE_ID,'geometryRequest'),lightingRequest=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!repair||!geometryRequest||!lightingRequest)throw new Error('There is no rejected scene-fit response to repair.');
+    await copyText(buildSceneFitRepairPrompt(this.plan,{geometryRequest,lightingRequest},repair,availableLightPresetKeys(lightAnimationCatalog())));
+    repair.promptCopiedAt=Date.now();
+    await this.render();
+  }
+  sceneFitBundle() {
+    const geometryRequest=this.scene.getFlag(MODULE_ID,'geometryRequest'),lightingRequest=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!geometryRequest||!lightingRequest)throw new Error('Copy or export a complete scene-fit request first.');
+    return validateSceneFit({kind:'scene-fit',version:1,geometry:this.scene.getFlag(MODULE_ID,'geometryProposal'),lighting:this.scene.getFlag(MODULE_ID,'lightingProposal')},{geometryRequest,lightingRequest,catalog:lightAnimationCatalog()});
+  }
+  async importSceneFit() {
+    const frame=this.assertAnalysisReady(),geometryRequest=this.scene.getFlag(MODULE_ID,'geometryRequest'),lightingRequest=this.scene.getFlag(MODULE_ID,'lightingRequest');
+    if(!geometryRequest||!lightingRequest||geometryRequest.frame!==frame||lightingRequest.frame!==frame)throw new Error('Copy or export a fresh complete scene-fit request first.');
+    const input=this.element.querySelector('[name="sceneFitJson"]').value,file=this.element.querySelector('[name="sceneFitFile"]').files[0];
+    if(file&&file.size>2_000_000)throw new Error('Scene-fit JSON exceeds 2 MB.');
+    const candidate=file?await file.text():input;
+    let bundle;
+    try {bundle=validateSceneFit(candidate,{geometryRequest,lightingRequest,catalog:lightAnimationCatalog()});}
+    catch(error) {
+      this.sceneFitRepair={json:candidate,error:error instanceof Error?error.message:String(error)};
+      await this.render();
+      throw error;
+    }
+    if(analysisFrame(this.scene)!==frame||geometryRequest.wallSignature!==wallSignature(this.scene)||lightingRequest.managedSignature!==managedLightSignature(this.scene)||lightingRequest.protectedSignature!==protectedLightSignature(this.scene))throw new Error('Background, walls or lights changed during import. Request a fresh complete scene fit.');
+    const previousGeometry=this.scene.getFlag(MODULE_ID,'geometryProposal'),previousLighting=this.scene.getFlag(MODULE_ID,'lightingProposal');
+    try {
+      await this.scene.setFlag(MODULE_ID,'geometryProposal',bundle.geometry);
+      await this.scene.setFlag(MODULE_ID,'lightingProposal',bundle.lighting);
+    } catch(error) {
+      try {
+        await this.scene.setFlag(MODULE_ID,'geometryProposal',previousGeometry??null);
+        await this.scene.setFlag(MODULE_ID,'lightingProposal',previousLighting??null);
+      } catch(recovery) {
+        throw new Error(`${error.message} Scene-fit proposal persistence recovery failed: ${recovery.message}`);
+      }
+      throw error;
+    }
+    this.sceneFitRepair=null;this.sceneFitPreview=null;
+    await this.render();
+    await this.previewSceneFit();
+    ui.notifications.info('Complete scene fit saved for review. No native walls or lights have changed.');
+  }
+  async previewSceneFit() {
+    this.sceneFitPreview=null;
+    const frame=this.assertAnalysisReady(),bundle=this.sceneFitBundle(),wallBefore=wallSignature(this.scene),managedBefore=managedLightSignature(this.scene),protectedBefore=protectedLightSignature(this.scene);
+    const image=await loadImage(backgroundPath(this.scene)),canvas=renderWholeMap(image,this.scene,{},true);
+    drawSceneFitProposal(canvas,bundle,this.scene);
+    if(frame!==analysisFrame(this.scene)||wallBefore!==wallSignature(this.scene)||managedBefore!==managedLightSignature(this.scene)||protectedBefore!==protectedLightSignature(this.scene))throw new Error('Scene changed during preview. Preview the complete scene fit again.');
+    canvas.setAttribute('aria-label','Complete wall and lighting scene-fit comparison');
+    this.element.querySelector('.sa-scene-fit-preview').replaceChildren(canvas);
+    this.sceneFitPreview={frame,wallBefore,managedBefore,protectedBefore,json:JSON.stringify(bundle)};
+    this.setNextAction('applySceneFit','inspect the combined wall and lighting overlay, then apply the complete scene fit.');
+  }
+  async applySceneFit() {
+    const frame=this.assertAnalysisReady(),bundle=this.sceneFitBundle(),preview=this.sceneFitPreview;
+    if(this.element.querySelector('[name="sceneFitFile"]').files.length||this.element.querySelector('[name="sceneFitJson"]').value.trim()!==JSON.stringify(bundle,null,2))throw new Error('Import your edited scene-fit JSON before applying.');
+    if(!preview||preview.frame!==frame||preview.json!==JSON.stringify(bundle))throw new Error('Preview this exact complete scene fit before applying it.');
+    const needsReview=bundle.geometry.registrationReviewRequired||bundle.geometry.walls.some(item=>item.reviewRequired)||bundle.geometry.openings.some(item=>item.reviewRequired)||bundle.lighting.registrationReviewRequired||bundle.lighting.lights.some(item=>item.reviewRequired);
+    if(needsReview&&!this.element.querySelector('[name="sceneFitReview"]').checked)throw new Error('Acknowledge the flagged wall and lighting items after reviewing the overlay.');
+    const walls=proposedWallData(bundle.geometry,this.scene),lights=proposedLightData(bundle.lighting,this.scene,lightAnimationCatalog());
+    if(!await DialogV2.confirm({window:{title:'Apply complete scene fit?'},content:`<p>This replaces all ${this.scene.walls.size} walls and doors and all Scene Architect-managed lights with the combined proposal.</p><p>Protected lights remain unchanged. Independent wall and managed-light backups are kept for recovery.</p>`,rejectClose:false}))return;
+    try {
+      await replaceSceneFit(this.scene,{walls,lights,frame,wallBefore:preview.wallBefore,managedBefore:preview.managedBefore,protectedBefore:preview.protectedBefore});
+    } catch(error) {
+      if(error.message.includes('recovery is blocked'))await this.scene.setFlag(MODULE_ID,'sceneFitRecovery',{version:1,frame,error:error.message,recordedAt:Date.now()});
+      throw error;
+    }
+    await this.scene.setFlag(MODULE_ID,'sceneFit',{version:1,frame,appliedAt:Date.now()});
+    await this.scene.setFlag(MODULE_ID,'sceneFitRecovery',null);
+    await this.scene.setFlag(MODULE_ID,'geometryProposal',null);
+    await this.scene.setFlag(MODULE_ID,'lightingProposal',null);
+    await this.scene.setFlag(MODULE_ID,'geometryRequest',null);
+    await this.scene.setFlag(MODULE_ID,'lightingRequest',null);
+    this.sceneFitPreview=null;
+    await this.render();
+    ui.notifications.info('Complete scene fit applied. Test the scene in Foundry.');
+  }
   async copySourceLightingPrompt() {
     this.lightRepair=null;
     const request=await this.lightingRequest('source');
@@ -637,4 +791,4 @@ Hooks.on('renderSceneDirectory',(_app,element)=>{
   button.addEventListener('click',()=>launch().catch(e=>ui.notifications.error(e.message)));
   (element.querySelector?.('.directory-footer')||element.querySelector?.('footer')||element).appendChild(button);
 });
-Hooks.once('ready',()=>{game.modules.get(MODULE_ID).api={launch,compileGeometry,validatePlan,buildLayoutPrompt,wholeMapPrompt};});
+Hooks.once('ready',()=>{game.modules.get(MODULE_ID).api={launch,compileGeometry,validatePlan,buildSceneIntentPrompt,buildLayoutPrompt,wholeMapPrompt};});

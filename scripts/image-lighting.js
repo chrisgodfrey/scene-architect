@@ -105,14 +105,17 @@ export function buildLightRegistrationPrior(scene,request) {
   return {version:1,coordinateSpace:request.mode==='source'?'normalized-source-image':'normalized-image',managedLights,protectedLights};
 }
 
-export function lightAnalysisPrompt(plan,request,availablePresets=lightPresetKeys()) {
+export function lightAnalysisPrompt(plan,request,availablePresets=lightPresetKeys(),{embedded=false}={}) {
   const source=request.mode==='source',version=source?2:1,space=source?'normalized-source-image':'normalized-image';
   const subject=source
     ? 'Analyse the complete battlemap image you generated earlier in this conversation. Do not ask me to attach the same image again and do not generate another image.'
     : 'Analyse the attached FINISHED battlemap comparison PNG. Do not generate another image.';
   const first=request.registration?.managedLights?.[0]?.id;
   const sourceFields=first?`"sourceIds":["${first}"],"change":"moved"`:'"sourceIds":[],"change":"added"';
-  return `${subject} Identify tangible visible light emitters and return ONLY valid JSON, without markdown fences.
+  const opening=embedded
+    ? 'LIGHTING TASK: Return the complete lighting object in the lighting field of the required wrapper.'
+    : `${subject} Identify tangible visible light emitters and return ONLY valid JSON, without markdown fences.`;
+  return `${opening}
 
 Use the entire ${source?'previously generated source image':'attached image'}: top-left [0,0], bottom-right [1,1]. Coordinates are fractions of image width and height. Do not create native lights for reflections, illuminated floors, general baked glow, windows lit only from outside, or bright decoration without a tangible emitter.
 

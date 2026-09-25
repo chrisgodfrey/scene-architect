@@ -5,6 +5,7 @@ import {compileGeometry} from '../scripts/geometry.js';
 import {wallDataFromSegment} from '../scripts/foundry-data.js';
 import {projectFromScene} from '../scripts/project.js';
 import {renderGuide,renderWholeMap} from '../scripts/whole-map.js';
+import {analysisFrame} from '../scripts/image-geometry.js';
 import {applyDocumentUpdate} from './mock-update.js';
 
 const results=[],assert=(truth,message)=>{if(!truth)throw new Error(message);results.push(message);};
@@ -67,23 +68,54 @@ try {
   globalThis.Hooks={once:()=>{},on:()=>{}};
   globalThis.CONST={GRID_TYPES:{SQUARE:1},WALL_DOOR_TYPES:{DOOR:1,SECRET:2}};
   globalThis.CONFIG={Canvas:{lightAnimations:{flicker:{},torch:{},rainbowswirl:{},pulse:{}}}};
-  const {SceneArchitectApp,buildLayoutPrompt}=await import('../scripts/scene-architect.js');
+  const {SceneArchitectApp,buildSceneIntentPrompt,buildLayoutPrompt}=await import('../scripts/scene-architect.js');
+  const intentPrompt=buildSceneIntentPrompt({brief:'An old school with four classrooms',sceneName:'School',columns:34,rows:28,gridSize:70,animations:['flicker','rainbowswirl']});
+  assert(intentPrompt.includes('"kind": "scene-intent"')&&intentPrompt.includes('"circulation": "linear|central-corridor"')&&intentPrompt.includes('Do not include x, y, width, height'),'Primary scene design prompt requests coordinate-free semantic intent with bounded circulation');
   const layoutPrompt=buildLayoutPrompt({brief:'Portal room',sceneName:'Test',columns:20,rows:20,gridSize:70},['flicker','rainbowswirl']);
-  assert(layoutPrompt.includes('"preset":"flickering-lamp"')&&layoutPrompt.includes('sourceFeatureId')&&layoutPrompt.includes('flicker, rainbowswirl'),'Layout prompt requests semantic source-linked lights using installed animation keys');
+  assert(layoutPrompt.includes('"spaces"')&&layoutPrompt.includes('"preset":"flickering-lamp"')&&layoutPrompt.includes('sourceFeatureId')&&layoutPrompt.includes('flicker, rainbowswirl'),'Advanced low-level layout prompt retains its coordinate and semantic-light contract');
   const p=structuredClone(fixture);p.art.assignments={};
   const plannedApp=new SceneArchitectApp();plannedApp.usePlan(structuredClone(fixture));await plannedApp.render();
   assert(plannedApp.element.querySelectorAll('.sa-primary').length===1&&plannedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft'&&plannedApp.element.querySelectorAll('[aria-current="step"]').length===1&&plannedApp.element.querySelector('[aria-current="step"]').dataset.step==='1'&&plannedApp.element.querySelector('.sa-step[data-step="1"] details').open,'Planned workflow identifies draft creation as its one primary action and opens only the current planning step');
+  const schoolIntent={
+    kind:'scene-intent',version:1,
+    scene:{name:'Old School',description:'An old school with four classrooms, a library and staff room.',visualDirection:'Top-down old-school fantasy map.',circulation:'central-corridor'},
+    rooms:[
+      {id:'classroom-1',name:'Classroom one',purpose:'Old desks and a teacher lectern',size:'medium',floor:'wood',features:[{id:'teacher-desk',type:'desk',description:'Teacher desk',size:'small',count:1}],ambientLight:true},
+      {id:'classroom-2',name:'Classroom two',purpose:'Rows of student desks',size:'medium',floor:'wood',features:[],ambientLight:true},
+      {id:'classroom-3',name:'Classroom three',purpose:'Dusty classroom',size:'medium',floor:'wood',features:[],ambientLight:true},
+      {id:'classroom-4',name:'Classroom four',purpose:'Abandoned classroom',size:'medium',floor:'wood',features:[],ambientLight:true},
+      {id:'library',name:'Library',purpose:'Book stacks and reading tables',size:'large',floor:'wood',features:[{id:'reading-table',type:'table',description:'Reading table',size:'medium',count:2}],ambientLight:true},
+      {id:'staff',name:'Staff room',purpose:'Teachers meeting room',size:'small',floor:'wood',features:[],ambientLight:true}
+    ]
+  };
+  const generatedApp=new SceneArchitectApp();await generatedApp.render();
+  assert(generatedApp.element.querySelector('.sa-primary').dataset.action==='copyLayoutPrompt','New workflow makes the scene design request the one primary action');
+  await generatedApp.run('copyLayoutPrompt');
+  assert(clipboardText.includes('"kind": "scene-intent"')&&generatedApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&generatedApp.element.querySelector('[data-next-action-text]').textContent.includes('generated scene design'),'Copying the scene design request advances the primary guidance to one semantic import');
+  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(schoolIntent)});
+  await generatedApp.run('pastePlan');
+  assert(generatedApp.workflow.plan&&!generatedApp.workflow.planRepair&&generatedApp.workflow.plan.spaces.some(space=>space.id==='circulation')&&generatedApp.workflow.plan.openings.length===schoolIntent.rooms.length,'Generated school intent compiles locally into a valid central-corridor plan without repair state');
+  assert(generatedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft'&&!generatedApp.element.textContent.includes('Advanced plan not accepted'),'Successful semantic import advances directly to draft creation');
+  const validGeneratedPlan=generatedApp.workflow.plan;
+  const overCapacity=structuredClone(schoolIntent);overCapacity.rooms=Array.from({length:20},(_,index)=>({...schoolIntent.rooms[0],id:`room-${index}`,name:`Room ${index}`,features:[]}));
+  generatedApp.workflow.columns=12;generatedApp.workflow.rows=12;
+  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(overCapacity)});
+  await generatedApp.run('pastePlan');
+  assert(generatedApp.workflow.plan===validGeneratedPlan&&!generatedApp.workflow.planRepair,'Semantic capacity failure preserves the current valid plan and never enters low-level plan repair');
+  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(fixture)});
+  await generatedApp.run('pastePlan');
+  assert(generatedApp.workflow.plan===validGeneratedPlan&&!generatedApp.workflow.planRepair&&notices.at(-1).includes('kind must be "scene-intent"'),'Primary import rejects low-level plan JSON atomically and keeps repair state exclusive to Advanced');
   const invalidPlan=structuredClone(fixture),firstProp=invalidPlan.features[0],overlappingProp=invalidPlan.features[1];
   overlappingProp.x=firstProp.x;overlappingProp.y=firstProp.y;
   const rejectedJson=JSON.stringify(invalidPlan,null,2),dialogResults=[{json:rejectedJson}];
   foundry.applications.api.DialogV2.input=async()=>dialogResults.shift();
-  const repairApp=new SceneArchitectApp();await repairApp.render();await repairApp.run('pastePlan');
+  const repairApp=new SceneArchitectApp();await repairApp.render();await repairApp.run('pastePlan',{dataset:{mode:'advanced'}});
   assert(repairApp.workflow.planRepair?.json===rejectedJson&&repairApp.workflow.planRepair.error==='Props restraint-1 and restraint-2 overlap.'&&repairApp.element.textContent.includes('Props restraint-1 and restraint-2 overlap.'),'Rejected plan JSON and the exact validation error remain available in persistent correction guidance');
   assert(repairApp.element.querySelector('.sa-primary').dataset.action==='copyPlanRepairPrompt'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('correction request'),'Validation failure makes the correction request the primary guided action');
   await repairApp.run('copyPlanRepairPrompt');
   assert(clipboardText.includes('"validatorError": "Props restraint-1 and restraint-2 overlap."')&&clipboardText.includes('"rejectedPlanText"')&&clipboardText.includes('untrusted data'),'Correction request includes bounded validation evidence and labels model-produced content as untrusted data');
-  assert(repairApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('corrected full plan JSON'),'Copied correction request advances the primary guidance to corrected JSON import');
-  dialogResults.push({json:JSON.stringify(fixture)});await repairApp.run('pastePlan');
+  assert(repairApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('corrected low-level plan JSON'),'Copied correction request advances the primary guidance to corrected JSON import');
+  dialogResults.push({json:JSON.stringify(fixture)});await repairApp.run('pastePlan',{dataset:{mode:'advanced'}});
   assert(repairApp.workflow.plan&&!repairApp.workflow.planRepair&&repairApp.element.querySelector('.sa-primary').dataset.action==='buildDraft','A valid corrected plan clears repair state and resumes the normal draft workflow');
   const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70,distance:5,units:'ft'},walls:compileGeometry(p).map((e,i)=>({...wallDataFromSegment(e,70),_id:`old-wall-${i}`})),
     lights:[
@@ -121,7 +153,15 @@ try {
   let confirmText='';foundry.applications.api.DialogV2.confirm=async options=>{confirmText=options.content;return true;};
   await app.applyMap();
   assert(uploads.length===2&&scene.firstLevel.background.src.endsWith('-map.png'),'Apply uploads the original source and fitted full-map background');
-  assert(scene.getFlag('scene-architect','map').generationId===null&&app.element.querySelector('.sa-primary').dataset.action==='exportAnalysisImage'&&app.element.querySelectorAll('[aria-current="step"]').length===1&&app.element.querySelector('.sa-progress-item[data-step="2"]').classList.contains('is-complete')&&app.element.querySelector('.sa-progress-item[data-step="3"]').classList.contains('is-complete')&&app.element.querySelector('[aria-current="step"]').dataset.step==='4'&&app.element.querySelector('.sa-step[data-step="4"] details').open,'A map applied without a copied generation prompt completes generation and alignment, then opens fitted-image geometry');
+  assert(scene.getFlag('scene-architect','map').generationId===null&&app.element.querySelector('.sa-primary').dataset.action==='exportSceneFitImage'&&app.element.querySelectorAll('[aria-current="step"]').length===1&&app.element.querySelectorAll('.sa-progress-item').length===5&&app.element.querySelector('[aria-current="step"]').dataset.step==='4'&&app.element.querySelector('.sa-step[data-step="4"] details').open&&!app.element.textContent.includes('optional'),'A map applied without a generation identity opens one required fitted-image scene-fit stage in the five-stage journey');
+  const createURL=URL.createObjectURL,anchorClick=HTMLAnchorElement.prototype.click;let exportedBlob;
+  HTMLAnchorElement.prototype.click=function(){};
+  URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
+  await app.exportSceneFitImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
+  const combinedExportUrl=URL.createObjectURL(exportedBlob),combinedExport=await loadImage(combinedExportUrl);
+  assert(combinedExport.width===scene.width&&clipboardText.includes('"kind":"scene-fit"')&&(clipboardText.match(/Return ONLY/g)??[]).length===1&&clipboardText.includes('REGISTERED PRIOR')&&clipboardText.includes('REGISTERED LIGHT PRIOR'),'Combined fitted fallback downloads one registered comparison and copies one wrapper prompt');
+  URL.revokeObjectURL(combinedExportUrl);
+  await scene.setFlag('scene-architect','geometryRequest',null);await scene.setFlag('scene-architect','lightingRequest',null);
   assert(JSON.stringify([scene.walls,scene.lights,scene.tiles])===documents,'Applying preserves manually edited walls, lights and all existing Tiles');
   assert(confirmText.includes('older Scene Architect prop Tiles')&&confirmText.includes('aspect ratio'),'Confirmation explains legacy Tiles and aspect-ratio stretch');
   await app.markReferenceExported();await app.copyMapPrompt();
@@ -132,7 +172,7 @@ try {
   assert(uploads.length===4&&scene.getFlag('scene-architect','map').generationId===generation.imageId,'A selected map associates with same-chat geometry only after its generation prompt was copied');
   const uploadedMap=await loadImage(scene.firstLevel.background.src);
   assert(same(pixel(renderWholeMap(uploadedMap,scene),100,35),[255,0,0,255]),'Encoded uploaded PNG has no preview overlay');
-  const reopened=new SceneArchitectApp();reopened.workflow=projectFromScene(scene);await reopened.render();
+  const reopened=new SceneArchitectApp();reopened.workflow={...projectFromScene(scene),legacySeparateFit:true};await reopened.render();
   assert(reopened.workflow.map.src.includes('-source.png'),'Reopen restores original full-map source');
   assert(reopened.workflow.map.generationId===generation.imageId&&reopened.element.textContent.includes('registered vectors')&&reopened.element.textContent.includes('do not attach the image again'),'Applied map retains generation identity and offers registered same-chat geometry guidance');
   assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copySourceAnalysisPrompt'&&reopened.element.querySelector('[data-action="exportAnalysisImage"]'),'Map-applied workflow recommends same-chat analysis while keeping the fitted-image fallback reachable');
@@ -162,7 +202,6 @@ try {
   await scene.setFlag('scene-architect','geometryProposal',null);await reopened.render();
   const request=await reopened.analysisRequest();
   assert(request.width===1960&&request.height===1680&&request.imageId,'Analysis request is tied to the currently fitted background and scene dimensions');
-  const createURL=URL.createObjectURL,anchorClick=HTMLAnchorElement.prototype.click;let exportedBlob;
   // Inspect the actual export blob without starting an OS download in headless Edge.
   HTMLAnchorElement.prototype.click=function(){};
   URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
@@ -209,7 +248,7 @@ try {
   await reopened.previewGeometry();await reopened.applyGeometry();
   assert(scene.walls.length===3&&scene.walls[1].door===1&&!scene.walls.some(w=>w.flags?.['scene-architect']?.analysisSegment==='gap'),'Apply creates native wall/door documents and leaves open passages unblocked');
   assert(JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background])===preserved,'Geometry replacement preserves lights, the image and existing Tiles');
-  const geometryApp=new SceneArchitectApp();geometryApp.workflow=projectFromScene(scene);await geometryApp.render();
+  const geometryApp=new SceneArchitectApp();geometryApp.workflow={...projectFromScene(scene),legacySeparateFit:true};await geometryApp.render();
   assert(geometryApp.element.textContent.includes('Restore previous walls')&&geometryApp.element.querySelector('[name="geometryJson"]').value.includes('wall1'),'Reopening restores the geometry proposal and wall-backup action');
   assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt'&&geometryApp.element.querySelectorAll('[aria-current="step"]').length===1&&geometryApp.element.querySelector('.sa-progress-item[data-step="4"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='5'&&geometryApp.element.querySelector('.sa-step[data-step="5"] details').open,'Applied geometry marks its step complete and opens same-chat lighting as the one primary action');
   await geometryApp.restoreGeometry();
@@ -265,7 +304,7 @@ try {
   geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(finalLighting);await geometryApp.importLighting();await geometryApp.applyLighting();
   assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2&&same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore),'Applying lighting replaces only Scene Architect-managed lights and preserves the protected document');
   assert(JSON.stringify(scene.walls)===wallsBeforeLights&&scene.getFlag('scene-architect','lightingBackup').lights.length===2,'Applying lighting preserves walls and saves a durable managed-light backup');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene'&&geometryApp.element.querySelectorAll('[aria-current="step"]').length===1&&geometryApp.element.querySelector('.sa-progress-item[data-step="5"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='6'&&geometryApp.element.querySelector('.sa-step[data-step="6"] details').open,'Applied lighting marks its step complete and opens live Foundry testing as the one primary action');
+  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene'&&geometryApp.element.querySelector('.sa-progress-item[data-step="5"]').classList.contains('is-complete'),'Legacy domain checks still reach the live Foundry testing action');
   const appliedManaged=structuredClone(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated));
   await geometryApp.restoreLighting();
   assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).some(light=>light.flags['scene-architect'].sourceId==='plan-light-1-portal')&&scene.getFlag('scene-architect','lightingBackup').lights.length===appliedManaged.length,'Restore returns the previous managed-light set and keeps one-level undo');
@@ -296,17 +335,34 @@ try {
   assert(fresh.scene.lights.length===4&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates semantic and legacy native lights plus a geometry guide (mock Foundry)');
   assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
   assert(fresh.scene.lights[1].config.animation.type==='flicker'&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Flickering, steady and legacy non-animated lights produce complete native animation configs');
-  await geometryApp.render();
-  await geometryApp.copySourceLightingPrompt();
-  const screenshotRequest=scene.getFlag('scene-architect','lightingRequest');
-  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify({...lightProposal,requestId:screenshotRequest.requestId});
-  await geometryApp.importLighting();
-  assert(!!fresh.scene.getFlag('scene-architect','revision')&&geometryApp.element.querySelector('.sa-step[data-step="5"] details').open,'New drafts persist for reopening and the lighting review remains expanded for visual inspection');
+  geometryApp.workflow.legacySeparateFit=false;
+  await scene.setFlag('scene-architect','geometryProposal',null);await scene.setFlag('scene-architect','lightingProposal',null);
+  await geometryApp.render();await geometryApp.copySceneFitPrompt();
+  const fitGeometryRequest=scene.getFlag('scene-architect','geometryRequest'),fitLightingRequest=scene.getFlag('scene-architect','lightingRequest');
+  const fitGeometryIds=[...fitGeometryRequest.registration.segments,...fitGeometryRequest.registration.openings].map(item=>item.id);
+  const fitManagedIds=fitLightingRequest.registration.managedLights.map(item=>item.id);
+  const fitGeometry={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[{id:'combined-wall',a:[.1,.2],b:[.9,.2],kind:'wall',evidence:'visible',reviewRequired:false,note:'',sourceIds:[],change:'added'}],openings:[],removedSourceIds:fitGeometryIds,reviewNotes:[]};
+  const fitLighting={version:2,coordinateSpace:'normalized-source-image',requestId:fitLightingRequest.requestId,source:{imageId:generation.imageId,width:200,height:100},lights:[{id:'combined-lamp',name:'Combined lamp',center:[.5,.5],preset:'steady-lamp',spread:'medium',color:'#ffd6a0',evidence:'visible',reviewRequired:false,note:'',sourceIds:[],change:'added'}],removedSourceIds:fitManagedIds,reviewNotes:[]};
+  const invalidFitLighting=structuredClone(fitLighting);invalidFitLighting.lights[0].preset='not-installed';
+  geometryApp.element.querySelector('[name="sceneFitJson"]').value=JSON.stringify({kind:'scene-fit',version:1,geometry:fitGeometry,lighting:invalidFitLighting});
+  await geometryApp.run('importSceneFit');
+  assert(geometryApp.sceneFitRepair?.error==='Lighting: combined-lamp: preset is invalid.'&&!scene.getFlag('scene-architect','geometryProposal')&&!scene.getFlag('scene-architect','lightingProposal'),`Combined import rejects both proposals atomically and retains the domain-specific error (${geometryApp.sceneFitRepair?.error})`);
+  geometryApp.element.querySelector('[name="sceneFitJson"]').value=JSON.stringify({kind:'scene-fit',version:1,geometry:fitGeometry,lighting:fitLighting});
+  await geometryApp.importSceneFit();
+  assert(!!geometryApp.element.querySelector('.sa-scene-fit-preview canvas')&&geometryApp.element.querySelector('.sa-primary').dataset.action==='applySceneFit','Valid combined JSON advances through one wall-and-light preview to one apply action');
+  foundry.applications.api.DialogV2.confirm=async()=>true;await geometryApp.applySceneFit();
+  assert(scene.walls.length===1&&scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===1&&scene.lights.some(light=>light.id==='protected-light'),'Combined apply replaces walls and managed lights while preserving protected lights');
+  assert(scene.getFlag('scene-architect','sceneFit').frame===analysisFrame(scene)&&geometryApp.element.querySelectorAll('.sa-progress-item').length===5&&geometryApp.element.querySelector('.sa-progress-item[data-step="4"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='5','A frame-bound fit completes the required stage and opens stage 5 testing');
+  const fittedFrame=scene.getFlag('scene-architect','sceneFit').frame;
+  geometryApp.element.querySelector('[name="mapFile"]').files=transfer.files;
+  await geometryApp.previewMap();await geometryApp.applyMap();
+  assert(scene.getFlag('scene-architect','sceneFit').frame===fittedFrame&&analysisFrame(scene)!==fittedFrame&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='4'&&geometryApp.element.querySelector('.sa-primary').dataset.action==='exportSceneFitImage','Applying a replacement map invalidates frame-bound completion and requires scene fitting again before Test');
+  assert(!!fresh.scene.getFlag('scene-architect','revision')&&!geometryApp.element.textContent.includes('optional'),'New drafts persist and the normal journey exposes no optional fit branch');
   document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
   document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
   document.querySelector('#assembly').style.display='none';
-  const lightingSection=document.querySelector('[name="lightingJson"]').closest('.sa-section'),hero=document.querySelector('.sa-hero');
-  for(const section of document.querySelectorAll('.sa-section'))if(section!==hero&&section!==lightingSection)section.style.display='none';
+  const fitSection=document.querySelector('[name="sceneFitJson"]').closest('.sa-section'),hero=document.querySelector('.sa-hero');
+  for(const section of document.querySelectorAll('.sa-section'))if(section!==hero&&section!==fitSection)section.style.display='none';
   window.scrollTo(0,0);
   await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({passed:results.length,results},null,2)});
   document.title='PASS — Scene Architect';

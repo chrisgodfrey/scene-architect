@@ -77,7 +77,7 @@ export function buildRegistrationPrior(plan,scene,request) {
   return {version:1,coordinateSpace:space,segments:walls,openings,rooms,features};
 }
 
-export function analysisPrompt(plan,request) {
+export function analysisPrompt(plan,request,{embedded=false}={}) {
   const sourceMode=request.mode==='source',version=sourceMode?2:1,coordinateSpace=sourceMode?'normalized-source-image':'normalized-image';
   const registration=request.registration;
   const firstSource=registration?.segments[0]?.id??registration?.openings[0]?.id;
@@ -85,7 +85,10 @@ export function analysisPrompt(plan,request) {
   const subject=sourceMode
     ? 'Analyse the complete battlemap image you generated earlier in this conversation. Do not ask me to attach the same image again and do not generate another image.'
     : 'Analyse the attached FINISHED battlemap PNG and return wall/door geometry matching the artwork. Do not generate another image.';
-  return `${subject} Return ONLY valid JSON, without markdown fences.
+  const opening=embedded
+    ? 'GEOMETRY TASK: Return the complete geometry object in the geometry field of the required wrapper.'
+    : `${subject} Return ONLY valid JSON, without markdown fences.`;
+  return `${opening}
 
 Use the entire ${sourceMode?'previously generated source image':'attached image'}: top-left [0,0], bottom-right [1,1]. Coordinates are fractions of image width/height. Do not snap to grid squares. Trace simple, consistent WALL CENTRE LINES, ignoring shadows, pipes, furniture and floor-tile seams. Preserve diagonals if visible.
 
