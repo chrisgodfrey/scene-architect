@@ -73,10 +73,10 @@ export function artworkMapping(image,regions) {
   const width=image.naturalWidth??image.width,height=image.naturalHeight??image.height;
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>40_000_000)
     throw new Error('Artwork must have valid dimensions and contain at most 40 megapixels.');
-  // Only one-pixel integer rounding at the source resolution is tolerated.
   const error=Math.abs(width*regions.height-height*regions.width);
-  if(error>Math.max(regions.width,regions.height)||error/(height*regions.width)>.002)
-    throw new Error(`Artwork aspect ratio is incompatible. Expected ${regions.width}:${regions.height}; received ${width}:${height}. Regenerate with the full reference canvas; no cropping or stretching is permitted.`);
+  const aspectError=error/(height*regions.width);
+  if(aspectError>.002)
+    throw new Error(`Artwork aspect ratio is incompatible. Expected ${regions.width}:${regions.height}; received ${width}:${height}. Aspect difference ${(aspectError*100).toFixed(3)}% exceeds the 0.2% allowance. Keep the full reference framing; another resolution with matching proportions is allowed. No cropping or large proportional corrections are permitted.`);
   return {sourceWidth:width,sourceHeight:height,width:regions.width,height:regions.height,
     scaleX:regions.width/width,scaleY:regions.height/height,x:0,y:0};
 }

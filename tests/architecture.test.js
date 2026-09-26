@@ -94,11 +94,37 @@ test('same-frame artwork scales explicitly while incompatible aspect ratios fail
   assert.deepEqual(artworkMapping({width,height},regions),{sourceWidth:width,sourceHeight:height,width,height,scaleX:1,scaleY:1,x:0,y:0});
   assert.equal(artworkMapping({width:width/2,height:height/2},regions).scaleX,2);
   assert.equal(artworkMapping({width:1401,height:1200},regions).sourceWidth,1401);
-  assert.throws(()=>artworkMapping({width:1402,height:1200},regions),/aspect ratio/);
+  assert.equal(artworkMapping({width:1402,height:1200},regions).sourceWidth,1402);
+  assert.throws(()=>artworkMapping({width:1403,height:1200},regions),/aspect ratio/);
   assert.throws(()=>artworkMapping({width:1024,height:1024},regions),/aspect ratio/);
   assert.throws(()=>artworkMapping({width:1,height:1},regions),/aspect ratio/);
   for(const image of [{width:0,height}, {width:NaN,height}, {width:1.5,height}, {width:10000,height:10000}])
     assert.throws(()=>artworkMapping(image,regions),/dimensions/);
+});
+
+test('reported 1403x1121 artwork fits 2800x2240 without crop or geometry changes',()=>{
+  const regions={width:2800,height:2240},before=structuredClone(regions);
+  assert.deepEqual(artworkMapping({naturalWidth:1403,naturalHeight:1121,width:700,height:560},regions),{
+    sourceWidth:1403,sourceHeight:1121,width:2800,height:2240,
+    scaleX:2800/1403,scaleY:2240/1121,x:0,y:0
+  });
+  assert.deepEqual(regions,before);
+  for(const factor of [1,2,3,4]) {
+    const mapping=artworkMapping({width:1403*factor,height:1121*factor},regions);
+    assert.equal(mapping.sourceWidth*mapping.scaleX,regions.width);
+    assert.equal(mapping.sourceHeight*mapping.scaleY,regions.height);
+  }
+  assert.equal(artworkMapping({width:1400,height:1120},regions).scaleX,2);
+});
+
+test('relative aspect allowance includes exactly 0.2 percent and rejects either side beyond it',()=>{
+  const regions={width:2800,height:2240};
+  for(const width of [2495,2505])for(const factor of [1,2])
+    assert.doesNotThrow(()=>artworkMapping({width:width*factor,height:2000*factor},regions));
+  for(const width of [2494,2506])for(const factor of [1,2])
+    assert.throws(()=>artworkMapping({width:width*factor,height:2000*factor},regions),/aspect ratio/);
+  for(const image of [{width:1024,height:1024},{width:1536,height:1024},{width:1,height:1},{width:3,height:2}])
+    assert.throws(()=>artworkMapping(image,regions),/aspect ratio/);
 });
 
 test('composite updates reject moved managed lights but preserve independent GM lighting',()=>{

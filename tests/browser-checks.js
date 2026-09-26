@@ -9,6 +9,7 @@ import {renderReference,renderAnchorMask} from '../scripts/render-handoff.js';
 import {projectFromScene} from '../scripts/project.js';
 import {applyDocumentUpdate} from './mock-update.js';
 import {checkComposition,checkStructuralVariants} from './composition-browser.js';
+import {checkAssetWorkflow} from './asset-browser-checks.js';
 
 const results=[],assert=(truth,message)=>{if(!truth)throw new Error(message);results.push(message);};
 const pixel=(canvas,x,y)=>[...canvas.getContext('2d').getImageData(x,y,1,1).data];
@@ -239,7 +240,29 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   await rejects(()=>ratio.previewArtwork(),/aspect ratio/, 'Incompatible source ratio is rejected without crop or stretch');
   assert(same(ratioCounts,[uploads.length,scenes.size]),'Ratio failure makes no uploads or scene');
   await select(ratio,new File([await canvasBlob(makeCanvas(3,2))],'tiny-incompatible.png',{type:'image/png'}));
-  await rejects(()=>ratio.previewArtwork(),/aspect ratio/, 'Relative aspect cap rejects tiny incompatible sources despite one-pixel rounding tolerance');
+  await rejects(()=>ratio.previewArtwork(),/aspect ratio/, 'Relative aspect cap rejects tiny incompatible sources');
+  const near=await fresh();await near.buildPlan();
+  const nearSource=makeCanvas(1403,1121),nearContext=nearSource.getContext('2d');
+  nearContext.fillStyle='#a04c71';nearContext.fillRect(0,0,1403,1121);
+  for(const [x,y,color] of [[0,0,'red'],[1373,0,'lime'],[0,1091,'blue'],[1373,1091,'yellow']]) {
+    nearContext.fillStyle=color;nearContext.fillRect(x,y,30,30);
+  }
+  const nearFile=new File([await canvasBlob(nearSource)],'reported-1403x1121.png',{type:'image/png'});
+  await select(near,nearFile);
+  const nearPlan=JSON.stringify(near.plan),beforeNear=beforeNative();await near.previewArtwork();
+  assert(near.preview.canvas.width===2800&&near.preview.canvas.height===2240&&JSON.stringify(near.plan)===nearPlan&&beforeNative()===beforeNear,'Reported 1403x1121 source previews at 2800x2240 without native or plan changes');
+  assert(near.element.querySelector('[data-artwork-adjustment]')?.textContent.includes('0.125%'),'Preview explicitly discloses the tiny aspect correction');
+  for(const [x,y,expected] of [[2,2,[255,0,0,255]],[2797,2,[0,255,0,255]],[2,2237,[0,0,255,255]],[2797,2237,[255,255,0,255]]])
+    assert(same(pixel(near.preview.canvas,x,y),expected),'Near-matching source retains the full frame, including corner markers');
+  await rejects(()=>near.createScene(),/Inspect/,'Minor aspect correction still requires inspection before saving');
+  const nearBytes=Array.from(new Uint8Array(await near.preview.blob.arrayBuffer()));review(near);await near.createScene();
+  assert(same(nearBytes,Array.from(new Uint8Array(await uploads.at(-1).arrayBuffer())))&&near.workflow.map.sourceWidth===1403&&near.workflow.map.sourceHeight===1121,'Near-matching artwork saves exact preview bytes and original source dimensions');
+  const nearNative=beforeNative();await near.previewArtwork();review(near);await near.updateScene();
+  assert(beforeNative()===nearNative&&near.workflow.map.mapping.sourceWidth===1403,'Reapplying near-matching original preserves native geometry and original mapping');
+  await near.previewArtwork();await select(near,file);
+  assert(!near.element.querySelector('[data-artwork-adjustment]'),'Changing artwork removes the stale aspect-correction notice');
+  await near.previewArtwork();
+  assert(!near.element.querySelector('[data-artwork-adjustment]'),'Exact-aspect artwork does not show a correction notice');
   const stale=await ready();await select(stale,new File([file],'unseen.png',{type:'image/png'}));
   await rejects(()=>stale.createScene(),/Preview/, 'Changing the file invalidates the pending preview');
   await stale.previewArtwork();review(stale);
@@ -362,6 +385,7 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   await final.run('updateScene');
   assert(notices.at(-1).includes('Inspect')&&final.element.querySelector('[data-status]').textContent.includes('Inspect'),'Action errors are notified, logged and exposed as live status');
   final.status='Synthetic verification preview only. No generated-art quality or live Foundry behaviour has been verified.';await final.render();
+  await checkAssetWorkflow({assert,rejects,SceneArchitectApp,settings,scenes,uploads,review,output,setDialog:value=>dialogValue=value});
   document.querySelector('#check-summary').textContent=`PASS â€” ${results.length} browser checks (expand details)`;
   document.querySelector('#results').textContent=`PASS â€” ${results.length} checks\n`+results.join('\n');
   await output('browser-results.json',JSON.stringify({passed:results.length,checks:results,priorArtwork,limitations:['Foundry host APIs mocked; real v14 document/vision check still required.','The three v2 samples are synthetic, not model-generated artwork or evidence of visual success.','Optional prior artwork is earlier five-room evidence only, not visual acceptance or new six-room/three-scene validation.','Accessibility checks cover control semantics; no assistive-technology audit performed.']}));

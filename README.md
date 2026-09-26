@@ -1,35 +1,97 @@
 ---
 title: Scene Architect
-description: Compose frontier-model artwork around authoritative Foundry VTT architecture
+description: Build Foundry VTT scenes deterministically from server assets or compose generated artwork around authoritative geometry
 ---
 
-Scene Architect for **Foundry VTT v14** owns the map's geometry. An external
-multimodal image model supplies appearance, not coordinates. The returned image
-is an intermediate layer: Scene Architect replaces protected architectural pixels
-before creating the background and native walls, doors and lights.
+Scene Architect for **Foundry VTT v14** owns the map's geometry. The
+server-asset workflow uses a text-model design and a reviewed palette to build
+the background, native walls, doors and lights deterministically. It needs no
+image generation, model API key, asset-provider module or subscription.
 
-**Describe → Build → Generate Artwork → Import Artwork → Create Scene → Play**
+**Index assets → Review palette → Copy design request → Import JSON → Render → Create Scene**
+
+The existing generated-artwork workflow remains available. It treats a returned
+image as an appearance layer and replaces protected architectural pixels before
+creating the background and native documents.
 
 ## Development status
 
-**0.3.0-alpha.2** is an experimental prerelease for Foundry testing. It starts a
-new development line after **0.2.0-alpha.15**. Live Foundry integration and
-finished-map visual quality still require acceptance testing.
+**0.3.0-alpha.3** is an experimental prerelease for Foundry testing. It adds the
+server-asset workflow to the architecture-first development line introduced after
+**0.2.0-alpha.15**. New projects default to server assets; existing artwork projects
+retain their original workflow.
+Live alpha.2 creation, reopening, artwork updates, native doors and token vision
+were verified in Foundry 14.368. Finished-map visual quality remains a separate gate.
+The asset workflow also passed isolated live indexing, import, rendering,
+creation, reopening and background-update checks. Saved and repeated PNGs matched
+byte-for-byte; native documents and existing campaign scenes were preserved.
 The module does not contact a model, install local inference software or upload
 anything to an AI provider.
 
 Structural correctness and visual quality are separate gates. Automated canvas
 and geometry checks do not establish that a generated map looks convincing.
-The earlier individually assembled asset-pack experiment is not this architecture
-and is not evidence of visual success.
+The accepted small server-asset proof establishes a viable geometry-first direction,
+not automatic aesthetic quality or full-library performance.
 
 Alpha.2 fixes alpha.1 rejecting newly created scenes with fractional-pixel light
 positions. Creation and comparison now use the installed Foundry coordinate-field
 cleaners. Existing plans and artwork remain usable; no image regeneration is needed.
 
-## Using the workflow
+Alpha.3 also accepts near-matching artwork aspect ratios within 0.2%
+without the earlier one-source-pixel limit. The preview discloses the small
+proportional correction. This does not repair displaced painted doorways, vertical
+wall faces or other artwork that disagrees with the reference.
 
-1. Open **Scenes → Scene Architect** as GM. Enter the scene brief and canvas size.
+## Using server assets
+
+1. Put licensed PNG, JPEG or WebP assets anywhere under Foundry's Data directory.
+   A folder such as `assets/map-library` is convenient, not mandatory. The module
+   uses Foundry's data file browser; it cannot browse a path on the client computer.
+2. Open **Scenes → Scene Architect** as GM. New projects default to **Server assets**.
+   Enter a Data-relative asset root and choose **Index folder and save shared catalogue**.
+   Subfolders are traversed without assuming a provider-specific layout. Indexing
+   reads names, not image pixels. Progress and cancellation are available.
+3. Load the shared catalogue on another client with **Load shared catalogue**.
+   Search by filename/folder words and add up to 64 assets to a palette. Select at
+   least one repeating material and one horizontal wall strip, plus optional props.
+4. Review each asset's role and full-image width in grid cells. Height remains
+   proportional; transparent padding is retained. Filename dimensions are only
+   hints. Set a wall strip's vertical center from 0 to 1, usually 0.5, and confirm
+   each entry. Use smaller source images if the used palette exceeds 64 megapixels.
+5. Enter the brief and scene dimensions, then **Copy scene design request**. Send
+   the text to your preferred LLM and paste its complete JSON with **Import scene
+   design**. The request includes asset IDs and calibrated footprints, not image
+   files or their server paths. One round trip is the normal path, not a guarantee.
+6. Invalid JSON or geometry leaves the current plan unchanged. Use **Copy asset
+   design correction request** to repair the response. If you change the brief,
+   dimensions or palette after copying, copy a fresh request first.
+7. Build the local geometry, then **Render server assets**. Inspect material scale,
+   joins, furniture and circulation. Confirm inspection before creating a scene.
+   Only the exact inspected background PNG is uploaded; originals are not modified.
+8. Reopen a saved project to render its saved palette snapshot without loading the
+   catalogue. Background updates preserve native documents and door states. New
+   layouts create new scenes rather than silently replacing existing geometry.
+
+Catalogue JSON is sharded into bounded files in the world's `scene-architect`
+folder. A world setting points to the completed manifest. Failed or cancelled
+operations do not publish a partial index, although unreferenced shard files can
+remain; the module never deletes arbitrary server files. Re-index after adding or
+renaming assets. Search uses deterministic filename/path ranking, not embeddings.
+The loaded catalogue resides in browser memory, so large libraries still have a
+memory and network cost. Index resource limits fail explicitly rather than
+silently truncating the library.
+
+Asset plans use connected, non-overlapping rectangular rooms and calibrated props.
+The module checks overlapping props and doorway clearance; it does not certify
+every possible token route or artistic composition. Door thresholds are static
+artwork; native doors control movement, vision and light. Advanced joins, outdoor
+dressing and animated door leaves are future work. Replacing a source image at the
+same path can change later renders; preserve source files for repeatability.
+
+## Using generated artwork
+
+1. Open **Scenes → Scene Architect** as GM. Select **Generated artwork** and
+   **Start selected workflow**, then enter the scene brief and canvas size.
    Copy the scene-design request to a model and import its coordinate-free JSON.
    Alternatively load a representative example.
 2. Build the architectural preview. Scene Architect validates and places rooms,
@@ -52,7 +114,7 @@ cleaners. Existing plans and artwork remain usable; no image regeneration is nee
 
 The model is replaceable. There is no API key, provider SDK, local GPU, Python
 image-generation service, ComfyUI, ControlNet, asset library or second mapmaking
-application in this path.
+application in this optional path.
 
 ## Structural authority
 
@@ -86,9 +148,11 @@ but may erase more dressing and expose wider deterministic floor bands.
   `pixel = cell * gridSize`, with origin at the canvas's top-left.
 - Imported-image coordinates map once to the entire scene canvas. There is no
   crop, offset, inferred alignment or geometry adjustment.
-- Matching-aspect images are deterministically scaled to the requested output.
-  Rounding tolerance is at most one source pixel and 0.2% relative aspect error;
-  materially incompatible dimensions fail instead of being stretched.
+- Matching-aspect images at other resolutions are deterministically scaled to the
+  requested output. The correction permits at most 0.2% relative aspect
+  error, with a visible preview notice for the small horizontal/vertical scale
+  difference. For example, 1403 x 1121 fits a 2800 x 2240 canvas with about 0.125%
+  aspect correction. Nothing is cropped; larger differences still fail.
 - Original sources are retained separately from composites. Reapplying uses the
   original source, not an already composited background.
 
@@ -134,7 +198,7 @@ Inspect effects in the installed Foundry runtime.
 
 ## Major anchors and soft dressing
 
-New requests use `scene-intent` version 2. Version 1 intents and existing
+Generated-artwork requests use `scene-intent` version 2. Version 1 intents and existing
 low-level plans remain supported. The model supplies meanings and relationships,
 not footprints:
 
@@ -219,11 +283,11 @@ In Foundry's **Add-on Modules**, update Scene Architect, or install it using thi
 version-specific manifest:
 
 ```text
-https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.2/module.json
+https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.3/module.json
 ```
 
-Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.2**.
-The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.2)
+Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.3**.
+The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.3)
 also provides the module ZIP for manual installation.
 There is no runtime build step. To package a local checkout:
 
@@ -234,7 +298,7 @@ powershell -NoProfile -File tools\package-module.ps1
 The local packager verifies the runtime files and writes
 `dist/scene-architect.zip` with the manifest at its root. It excludes experiments,
 tests and dependencies. Extract into `Data/modules/scene-architect/`, restart
-Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.2**.
+Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.3**.
 
 If alpha.1 failed with "Managed light positions differ", reopen the local draft,
 reselect the original artwork, preview it again and retry **Create Scene**.
@@ -261,6 +325,15 @@ Tests exercise real canvas rasterization and PNG encoding/decoding, but Foundry
 host, document and upload APIs are mocked.
 The browser mock applies coordinate-field cleaning during light creation and tests
 creation, reopening and artwork updates with fractional-pixel plan lights.
+Near-matching artwork tests cover the reported 1403 x 1121 dimensions, the exact
+0.2% acceptance boundary, full-frame corner preservation, preview disclosure and
+reapplication without native-document changes.
+
+Alpha.3 passed 136 Node tests and 203 browser checks. The asset checks cover
+catalogue shards, calibrated metadata, stale requests, explicit failure paths,
+deterministic rendering and project persistence. A separate live Foundry 14.368
+pass verified native creation and updates, door collisions and client reload
+without changing existing scenes.
 
 Structural checks cover exact native/raster coordinates, full protected-band
 source exclusion, opening clearance, secret concealment, dimensions, repeatable

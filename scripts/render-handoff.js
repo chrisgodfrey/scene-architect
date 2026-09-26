@@ -63,6 +63,7 @@ VISUAL DIRECTION: ${plan.art?.direction||'Coherent hand-painted overhead battlem
 AUTHORITY AND FRAMING
 Scene Architect owns topology, traversability, grid alignment, structural boundaries, openings and major-anchor regions. Do not redesign the floor plan. Generated artwork is appearance, never the spatial source of truth. Protected architectural bands will be replaced by Scene Architect during final composition; do not rely on painted architecture there.
 Keep the entire ${width}:${height} canvas, ideally ${width} x ${height} pixels. No crop, border, perspective, isometric/oblique view, foreshortening, vertical wall faces or changed proportions. Camera exactly 90 degrees overhead, strictly orthographic.
+Another resolution with the same aspect ratio is acceptable; Scene Architect scales it to the scene canvas. Verify the delivered file's actual dimensions rather than claiming an unsupported output resolution. Preserve the full reference framing.
 Do not add structural walls, obstruct entrances or move rooms. Do not paint door leaves across openings: Scene Architect renders clear thresholds and native Foundry doors are interactive. Keep corridors and marked passages clear.
 Concentrate visual richness inside eligible rooms: materials, wear, furnishing, atmosphere and environmental storytelling. Place each major feature substantially within its marked region and preserve counts and facing relationships. Ordinary dressing is free inside its room; it does not need individual assets or exact coordinates.
 

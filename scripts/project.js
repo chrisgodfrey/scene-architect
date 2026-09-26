@@ -2,6 +2,7 @@ import { compileGeometry } from './geometry.js';
 import { wallDataFromSegment } from './foundry-data.js';
 import { normalizePlan, validatePlan } from './plan.js';
 import { migrateArt, validateArt } from './art-manifest.js';
+import { validateAssetPlan } from './asset-plan.js';
 
 export const MODULE_ID='scene-architect';
 const wallShape=w=>{
@@ -33,18 +34,20 @@ export function geometryConflict(scene,plan) {
 export function projectFromScene(scene) {
   const raw=scene.getFlag(MODULE_ID,'plan');
   if(!raw) throw new Error('This scene has no Scene Architect plan.');
-  const plan=validateArt(migrateArt(validatePlan(normalizePlan(raw))));
+  const normalized=normalizePlan(raw);
+  const plan=normalized.assetScene?validateAssetPlan(normalized):validateArt(migrateArt(validatePlan(normalized)));
   return {plan,sceneId:scene.id,sceneName:plan.scene.name,columns:plan.scene.columns,rows:plan.scene.rows,gridSize:plan.scene.gridSize,brief:plan.scene.description,map:structuredClone(scene.getFlag(MODULE_ID,'map')??null),generation:structuredClone(scene.getFlag(MODULE_ID,'generation')??null),revision:scene.getFlag(MODULE_ID,'revision')??null};
 }
 
 export async function saveProject(scene,workflow) {
-  validatePlan(workflow.plan);validateArt(workflow.plan);
+  if(workflow.plan.assetScene)validateAssetPlan(workflow.plan);
+  else {validatePlan(workflow.plan);validateArt(workflow.plan);}
   if((scene.getFlag(MODULE_ID,'revision')??null)!==(workflow.revision??null)) throw new Error('This project changed in another window. Reopen it before saving.');
   const revision=globalThis.crypto.randomUUID();
   const data=structuredClone(workflow.plan);
   // Foundry merges flag objects recursively. Explicit deletion keys remove old assignments
   // while preserving other module flags and unrelated scene data.
-  const saved=scene.getFlag(MODULE_ID,'plan')?.art?.assignments??{};
+  const saved=workflow.plan.assetScene?{}:scene.getFlag(MODULE_ID,'plan')?.art?.assignments??{};
   for(const id of Object.keys(saved))if(!Object.hasOwn(data.art.assignments,id))data.art.assignments[`-=${id}`]=null;
   await scene.update({[`flags.${MODULE_ID}.plan`]:data,[`flags.${MODULE_ID}.map`]:structuredClone(workflow.map??null),[`flags.${MODULE_ID}.generation`]:structuredClone(workflow.generation??null),[`flags.${MODULE_ID}.revision`]:revision});
   workflow.revision=revision;

@@ -13,6 +13,8 @@ test('one generic handoff includes reference legend, semantics, dressing, facing
   assert.equal((prompt.match(/Iron restraint bed with leather straps/g)||[]).length,3);
   assert(!prompt.includes('never shift architecture by even part'));
   assert(!prompt.includes('geometry-reading follow-up'));
+  assert(prompt.includes('Another resolution with the same aspect ratio is acceptable'));
+  assert(prompt.includes("Verify the delivered file's actual dimensions"));
   assert.deepEqual(plan,before);
 });
 

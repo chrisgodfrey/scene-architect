@@ -33,6 +33,11 @@
 .scene-architect .sa-progress-index { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border: 1px solid currentColor; border-radius: 50%; font-weight: 700; }
 .scene-architect .is-complete { border-color: #68bc86; }
 .scene-architect .is-current { border: 2px solid #ffca59; font-weight: 700; }
+.scene-architect .sa-asset-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; max-height: 420px; overflow-y: auto; padding: 6px; }
+.scene-architect .sa-asset-result { min-width: 0; padding: 8px; border: 1px solid #737782; border-radius: 6px; }
+.scene-architect .sa-asset-result img, .scene-architect .sa-palette-entry img { object-fit: contain; background: #353943; }
+.scene-architect .sa-palette-entry { min-width: 0; margin: 12px 0; padding: 10px; border: 1px solid #737782; }
+.scene-architect .sa-palette-entry legend { overflow-wrap: anywhere; max-width: 100%; }
 @media (max-width: 600px) {
   .scene-architect .sa-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .scene-architect .sa-grid-4, .scene-architect .sa-grid-3 { grid-template-columns: 1fr; }
