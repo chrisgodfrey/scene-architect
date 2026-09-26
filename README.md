@@ -12,7 +12,7 @@ before creating the background and native walls, doors and lights.
 
 ## Development status
 
-**0.3.0-alpha.1** is an experimental prerelease for Foundry testing. It starts a
+**0.3.0-alpha.2** is an experimental prerelease for Foundry testing. It starts a
 new development line after **0.2.0-alpha.15**. Live Foundry integration and
 finished-map visual quality still require acceptance testing.
 The module does not contact a model, install local inference software or upload
@@ -22,6 +22,10 @@ Structural correctness and visual quality are separate gates. Automated canvas
 and geometry checks do not establish that a generated map looks convincing.
 The earlier individually assembled asset-pack experiment is not this architecture
 and is not evidence of visual success.
+
+Alpha.2 fixes alpha.1 rejecting newly created scenes with fractional-pixel light
+positions. Creation and comparison now use the installed Foundry coordinate-field
+cleaners. Existing plans and artwork remain usable; no image regeneration is needed.
 
 ## Using the workflow
 
@@ -119,6 +123,11 @@ lighting is stylistic and never relocates a native light. Presets are
 `ambient-fill`. `flickering-lamp` uses Foundry's `torch` animation. Existing
 coordinate-based lights and bounded overrides remain supported.
 
+Plan light centres may fall between pixels. Native creation and later position
+checks use the same Foundry `AmbientLight` field cleaners, preserving its coordinate
+precision without changing the plan. Actual document positions are compared exactly;
+this is not a tolerance that permits moved lights.
+
 An unavailable preset animation retains the existing steady-light fallback;
 an unavailable explicit animation override fails before creating documents.
 Inspect effects in the installed Foundry runtime.
@@ -210,11 +219,11 @@ In Foundry's **Add-on Modules**, update Scene Architect, or install it using thi
 version-specific manifest:
 
 ```text
-https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.1/module.json
+https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.2/module.json
 ```
 
-Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.1**.
-The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.1)
+Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.2**.
+The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.2)
 also provides the module ZIP for manual installation.
 There is no runtime build step. To package a local checkout:
 
@@ -225,7 +234,11 @@ powershell -NoProfile -File tools\package-module.ps1
 The local packager verifies the runtime files and writes
 `dist/scene-architect.zip` with the manifest at its root. It excludes experiments,
 tests and dependencies. Extract into `Data/modules/scene-architect/`, restart
-Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.1**.
+Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.2**.
+
+If alpha.1 failed with "Managed light positions differ", reopen the local draft,
+reselect the original artwork, preview it again and retry **Create Scene**.
+Do not move or delete native lights to bypass the check.
 
 The packaging command does not publish a release. Release maintainers must upload
 and publish the matching assets before updating the public main-branch manifest.
@@ -246,6 +259,8 @@ The browser harness uses an isolated headless Chromium/Edge profile. Set
 `SCENE_ARCHITECT_BROWSER` if needed. Outputs go to ignored `test-output/`.
 Tests exercise real canvas rasterization and PNG encoding/decoding, but Foundry
 host, document and upload APIs are mocked.
+The browser mock applies coordinate-field cleaning during light creation and tests
+creation, reopening and artwork updates with fractional-pixel plan lights.
 
 Structural checks cover exact native/raster coordinates, full protected-band
 source exclusion, opening clearance, secret concealment, dimensions, repeatable

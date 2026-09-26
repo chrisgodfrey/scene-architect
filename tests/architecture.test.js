@@ -6,8 +6,61 @@ import { applyDocumentUpdate } from './mock-update.js';
 import { normalizePlan, validatePlan } from '../scripts/plan.js';
 import { compileGeometry } from '../scripts/geometry.js';
 import { lightDataFromPlan, wallDataFromSegment } from '../scripts/foundry-data.js';
+import { compileSceneIntent } from '../scripts/plan-generator.js';
 
 const fixture=JSON.parse(fs.readFileSync(new URL('../fixtures/laboratory.json',import.meta.url)));
+
+function useLightCoordinateSchema(t,clean) {
+  const prior=globalThis.CONFIG;
+  globalThis.CONFIG={AmbientLight:{documentClass:{schema:{fields:{x:{clean},y:{clean}}}}}};
+  t.after(()=>{if(prior===undefined)delete globalThis.CONFIG;else globalThis.CONFIG=prior;});
+}
+
+for(const clean of [Math.round,Math.trunc])test(`managed lights use the host coordinate cleaner (${clean.name}), not raw fractional pixels`,t=>{
+  useLightCoordinateSchema(t,clean);
+  for(const name of ['laboratory','civic','bathhouse'])for(const gridSize of [50,70,71,100,140]) {
+    const intent=JSON.parse(fs.readFileSync(new URL(`../fixtures/intents/${name}.json`,import.meta.url)));
+    const plan=compileSceneIntent(intent,{columns:40,rows:32,gridSize});
+    const raw=plan.lights.map(l=>[l.x*gridSize,l.y*gridSize]),before=structuredClone(plan);
+    if(name!=='civic'&&gridSize===70)assert(raw.some(pair=>pair.some(n=>!Number.isInteger(n))));
+    const scene={width:40*gridSize,height:32*gridSize,grid:{size:gridSize},
+      walls:compileGeometry(plan).map(s=>wallDataFromSegment(s,gridSize)),
+      lights:plan.lights.map(l=>{
+        const data=lightDataFromPlan(l,plan);
+        return {...data,x:clean(data.x),y:clean(data.y)};
+      })};
+    assert.doesNotThrow(()=>assertArchitectureScene(scene,plan),`${name}, grid ${gridSize}`);
+    assert.deepEqual(plan.lights.map(l=>{const {x,y}=lightDataFromPlan(l,plan);return [x,y];}),raw.map(pair=>pair.map(clean)));
+    assert.deepEqual(plan,before,'Native coordinate cleaning must not rewrite the authoritative plan');
+    scene.lights.reverse();
+    scene.lights.push({x:33,y:44,flags:{},config:{dim:17}});
+    scene.lights[0].config.alpha=.12;
+    assert.doesNotThrow(()=>assertArchitectureScene(scene,plan));
+    for(const axis of ['x','y'])for(const delta of [-1,1]) {
+      scene.lights[0][axis]+=delta;
+      assert.throws(()=>assertArchitectureScene(scene,plan),/Managed light positions/);
+      scene.lights[0][axis]-=delta;
+    }
+    const light=scene.lights.shift();
+    assert.throws(()=>assertArchitectureScene(scene,plan),/Managed light positions/);
+    scene.lights.unshift(light);
+    scene.lights.push(structuredClone(light));
+    assert.throws(()=>assertArchitectureScene(scene,plan),/Managed light positions/);
+  }
+});
+
+test('host coordinate cleaning failures propagate instead of silently accepting raw positions',t=>{
+  useLightCoordinateSchema(t,()=>{throw new Error('Coordinate cleaning rejected');});
+  const plan=validatePlan(normalizePlan(fixture));
+  assert.throws(()=>lightDataFromPlan(plan.lights[0],plan,{torch:{},rainbowswirl:{},flicker:{}}),/Coordinate cleaning rejected/);
+  const fields=globalThis.CONFIG.AmbientLight.documentClass.schema.fields;
+  for(const invalid of [NaN,Infinity,null]) {
+    fields.x.clean=()=>invalid;
+    assert.throws(()=>lightDataFromPlan(plan.lights[0],plan),/rejected the planned light x coordinate/);
+  }
+  fields.x.clean=Math.round;delete fields.y;
+  assert.throws(()=>lightDataFromPlan(plan.lights[0],plan),/coordinate field is unavailable/);
+});
 
 test('architectural descriptor and Foundry share exact compiled segments without mutating plans',()=>{
   const before=structuredClone(fixture),regions=architecturalRegions(fixture),g=fixture.scene.gridSize;

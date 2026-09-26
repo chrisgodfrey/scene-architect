@@ -150,7 +150,11 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{clipboardText=text;}}});
   globalThis.Hooks={once:(event,fn)=>{if(event==='init')fn();},on:()=>{}};
   globalThis.CONST={GRID_TYPES:{SQUARE:1},WALL_DOOR_TYPES:{DOOR:1,SECRET:2}};
-  class NativeDocument {constructor(data){this.data=data;}validate(){if(faults.validation)throw new Error('Injected native validation failure');return true;}}
+  class NativeDocument {
+    static schema={fields:{x:{clean:Math.round},y:{clean:Math.round}}};
+    constructor(data){this.data=data;}
+    validate(){if(faults.validation)throw new Error('Injected native validation failure');return true;}
+  }
   globalThis.CONFIG={Canvas:{lightAnimations:{flicker:{},torch:{},rainbowswirl:{},pulse:{}}},Wall:{documentClass:NativeDocument},AmbientLight:{documentClass:NativeDocument}};
   globalThis.Scene={implementation:{create:async data=>{
     if(faults.create){faults.create=false;throw new Error('Injected scene creation failure');}
@@ -162,6 +166,10 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
         mutations.push(type);
         if(faults.native===type){delete faults.native;throw new Error('Injected native creation failure');}
         const documents=items.map(item=>({...structuredClone(item),id:crypto.randomUUID()}));
+        if(type==='AmbientLight')for(const document of documents) {
+          document.x=NativeDocument.schema.fields.x.clean(document.x);
+          document.y=NativeDocument.schema.fields.y.clean(document.y);
+        }
         if(faults.short===type){delete faults.short;documents.pop();}
         this[type==='Wall'?'walls':'lights'].push(...documents);return documents;
       }};
@@ -213,6 +221,8 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   const expectedBytes=Array.from(new Uint8Array(await app.preview.blob.arrayBuffer()));review(app);await app.createScene();
   const scene=app.scene;
   assert(scene&&scene.walls.length===compileGeometry(plan).length&&scene.lights.length===plan.lights.length,'Create Scene verifies native wall/light counts');
+  assert(plan.lights.some(l=>!Number.isInteger(l.x*plan.scene.gridSize)||!Number.isInteger(l.y*plan.scene.gridSize)),'Scene creation regression includes fractional-pixel source lights');
+  assert(scene.lights.every((l,i)=>l.x===Math.round(plan.lights[i].x*plan.scene.gridSize)&&l.y===Math.round(plan.lights[i].y*plan.scene.gridSize)),'Create Scene accepts host-cleaned coordinates without altering the plan');
   assert(same(expectedBytes,Array.from(new Uint8Array(await uploads.at(-1).arrayBuffer()))),'Created background is byte-exact preview PNG, not a second render');
   assert(scene.grid.alpha===0&&scene.firstLevel.background.src===app.workflow.map.composite,'Scene uses composite background and no baked/native grid overlay by default');
   assert(app.workflow.map.architectureVersion===1&&app.workflow.map.mapping.x===0&&app.workflow.map.sourceWidth===2800,'Saved map retains original dimensions, identity mapping and architecture version');
@@ -259,6 +269,9 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   };
   const reopened=await reopen(scene);
   assert(reopened.workflow.map.src===originalSource&&reopened.plan.rendering.version===1&&!reopened.preview&&!reopened.selectedFile,'Reopen retains original source/settings and clears pending images');
+  await reopened.previewArtwork();review(reopened);
+  const reopenedNative=beforeNative();await reopened.updateScene();
+  assert(beforeNative()===reopenedNative,'Reopened project updates artwork with cleaned coordinates without replacing lights or walls');
   await reopened.previewArtwork();review(reopened);
   scene.flags['scene-architect'].revision='external-revision';const beforeStale=uploads.length;
   await rejects(()=>reopened.updateScene(),/another window/, 'Stale project revision rejects update before uploads');

@@ -2,6 +2,7 @@ import { compileGeometry } from './geometry.js';
 import { normalizePlan, validatePlan } from './plan.js';
 import { geometryConflict, saveProject } from './project.js';
 import { mapSize } from './whole-map.js';
+import { lightPositionFromPlan } from './foundry-data.js';
 
 /** @typedef {{x:number,y:number,width:number,height:number}} PixelRect */
 /** @typedef {{version:1,wallWidth:number,bandPadding:number,material:string}} ArchitectureSettings */
@@ -84,8 +85,11 @@ export function assertArchitectureScene(scene,plan) {
   const conflict=geometryConflict(scene,plan);
   if(conflict)throw new Error(`${conflict} Create a new scene from the original plan; artwork cannot redefine native geometry.`);
   if(scene.lights) {
-    const normalized=validatePlan(normalizePlan(plan)),g=normalized.scene.gridSize;
-    const expected=normalized.lights.map(l=>JSON.stringify([l.x*g,l.y*g])).sort();
+    const normalized=validatePlan(normalizePlan(plan));
+    const expected=normalized.lights.map(l=>{
+      const {x,y}=lightPositionFromPlan(l,normalized);
+      return JSON.stringify([x,y]);
+    }).sort();
     const actual=[...scene.lights].filter(l=>l.flags?.['scene-architect']?.generated===true).map(l=>JSON.stringify([l.x,l.y])).sort();
     if(JSON.stringify(expected)!==JSON.stringify(actual))
       throw new Error('Managed light positions differ from the saved plan. Create a new scene from the original plan; artwork cannot redefine native lighting.');

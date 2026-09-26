@@ -83,7 +83,19 @@ export function wallDataFromSegment(seg, grid) {
   return base;
 }
 
+export function lightPositionFromPlan(light,plan) {
+  const position={x:Number(light.x)*plan.scene.gridSize,y:Number(light.y)*plan.scene.gridSize};
+  const DocumentClass=globalThis.CONFIG?.AmbientLight?.documentClass;
+  // Match the installed host's coordinate cleaning, without changing plan geometry.
+  if(DocumentClass)for(const axis of ['x','y']) {
+    const field=DocumentClass.schema?.fields?.[axis];
+    if(typeof field?.clean!=='function')throw new Error(`Foundry AmbientLight ${axis} coordinate field is unavailable. Reload Foundry before saving.`);
+    position[axis]=field.clean(position[axis]);
+    if(!Number.isFinite(position[axis]))throw new Error(`Foundry rejected the planned light ${axis} coordinate.`);
+  }
+  return position;
+}
+
 export function lightDataFromPlan(l,plan,catalog=lightAnimationCatalog(),options={}) {
-  const g=plan.scene.gridSize;
-  return lightDataFromIntent(l,{x:Number(l.x)*g,y:Number(l.y)*g,sourceId:options.sourceId??l.sourceId??null},catalog);
+  return lightDataFromIntent(l,{...lightPositionFromPlan(l,plan),sourceId:options.sourceId??l.sourceId??null},catalog);
 }
