@@ -1,8 +1,9 @@
 import { LIGHT_PRESETS, featureCorners, normalizePlan, openingRect, polygonsOverlap, validatePlan } from './plan.js';
 import { DEFAULT_DIRECTION, migrateArt, validateArt } from './art-manifest.js';
+import { normalizeSemanticFeatures, placeAnchors, semanticId, semanticKeys, validateIntentRelationships } from './anchors.js';
 
 const INTENT_KIND='scene-intent';
-const INTENT_VERSION=1;
+const INTENT_VERSION=2;
 const CIRCULATION=new Set(['linear','central-corridor']);
 const SIZES=new Set(['small','medium','large']);
 const SIZE_WEIGHT={small:1,medium:2,large:3};
@@ -46,9 +47,16 @@ function normalizeFeature(raw,index,used) {
   };
 }
 
-function normalizeRoom(raw,index,usedRoomIds) {
+function normalizeRoom(raw,index,usedRoomIds,version) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error(`rooms[${index}] must be an object.`);
-  const id=uniqueId(raw.id,usedRoomIds,`room-${index+1}`),usedFeatureIds=new Set();
+  if(version===2)semanticKeys(raw,['id','name','purpose','size','floor','features','ambientLight'],`rooms[${index}]`);
+  const id=version===2?semanticId(raw.id,`rooms[${index}].id`):uniqueId(raw.id,usedRoomIds,`room-${index+1}`),usedFeatureIds=new Set();
+  if(version===2) {
+    if(usedRoomIds.has(id))throw new Error(`Ambiguous duplicate or reserved room ID after normalization: ${id}.`);
+    usedRoomIds.add(id);
+    if(raw.size!=null&&!SIZES.has(raw.size))throw new Error(`${id}.size must be small, medium or large.`);
+    if(raw.ambientLight!=null&&typeof raw.ambientLight!=='boolean')throw new Error(`${id}.ambientLight must be boolean.`);
+  }
   if(raw.features!=null&&!Array.isArray(raw.features))throw new Error(`${id}.features must be an array.`);
   return {
     id,
@@ -56,7 +64,7 @@ function normalizeRoom(raw,index,usedRoomIds) {
     purpose:text(raw.purpose,text(raw.name,'Usable scene space')),
     size:SIZES.has(raw.size)?raw.size:'medium',
     floor:text(raw.floor,'stone'),
-    features:(raw.features??[]).map((feature,featureIndex)=>normalizeFeature(feature,featureIndex,usedFeatureIds)),
+    features:version===2?normalizeSemanticFeatures(raw.features??[],id):(raw.features??[]).map((feature,featureIndex)=>normalizeFeature(feature,featureIndex,usedFeatureIds)),
     ambientLight:raw.ambientLight===true
   };
 }
@@ -64,14 +72,20 @@ function normalizeRoom(raw,index,usedRoomIds) {
 export function normalizeSceneIntent(raw) {
   if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('Scene design must be a JSON object.');
   if(raw.kind!==INTENT_KIND)throw new Error(`Scene design kind must be "${INTENT_KIND}".`);
-  if(raw.version!==INTENT_VERSION)throw new Error(`Unsupported scene design version. Use version ${INTENT_VERSION}.`);
+  if(![1,INTENT_VERSION].includes(raw.version))throw new Error(`Unsupported scene design version. Use version 1 or ${INTENT_VERSION}.`);
   if(!raw.scene||typeof raw.scene!=='object'||Array.isArray(raw.scene))throw new Error('Scene design needs a scene object.');
   if(!Array.isArray(raw.rooms)||!raw.rooms.length)throw new Error('Scene design needs at least one room.');
   if(raw.rooms.length>MAX_ROOMS)throw new Error(`Scene design supports at most ${MAX_ROOMS} requested rooms.`);
-  const usedRoomIds=new Set(['circulation']),rooms=raw.rooms.map((room,index)=>normalizeRoom(room,index,usedRoomIds));
+  if(raw.version===2) {
+    semanticKeys(raw,['kind','version','scene','rooms'],'Scene design');
+    semanticKeys(raw.scene,['name','description','visualDirection','circulation'],'scene');
+    if(raw.scene.circulation!=null&&!CIRCULATION.has(raw.scene.circulation))throw new Error('scene.circulation must be linear or central-corridor.');
+  }
+  const usedRoomIds=new Set(['circulation']),rooms=raw.rooms.map((room,index)=>normalizeRoom(room,index,usedRoomIds,raw.version));
+  if(raw.version===2)validateIntentRelationships(rooms);
   return {
     kind:INTENT_KIND,
-    version:INTENT_VERSION,
+    version:raw.version,
     scene:{
       name:text(raw.scene.name,'New Scene'),
       description:text(raw.scene.description,''),
@@ -247,6 +261,19 @@ function placeFeatures(intentRooms,spaces,openings) {
   return {features,lights};
 }
 
+function boundGeneratedArtIds(plan) {
+  const used=new Set(),ids=new Map();
+  for(const asset of plan.art.assets) {
+    const original=asset.id;
+    asset.id=uniqueId(original,used,'asset');
+    ids.set(original,asset.id);
+  }
+  plan.art.surroundAsset=ids.get(plan.art.surroundAsset);
+  plan.art.wallAsset=ids.get(plan.art.wallAsset);
+  for(const room of plan.spaces)room.floorAsset=ids.get(room.floorAsset);
+  for(const feature of plan.features)feature.assetId=ids.get(feature.assetId);
+}
+
 export function compileSceneIntent(raw,fallback={}) {
   const intent=normalizeSceneIntent(raw);
   const columns=whole(Number(fallback.columns??34),'Scene columns',4,200);
@@ -255,7 +282,9 @@ export function compileSceneIntent(raw,fallback={}) {
   const layout=intent.scene.circulation==='central-corridor'
     ? centralCorridorLayout(intent.rooms,columns,rows)
     : linearLayout(intent.rooms,columns,rows);
-  const {features,lights}=placeFeatures(intent.rooms,layout.spaces,layout.openings);
+  const {features,lights}=intent.version===2
+    ?placeAnchors(intent.rooms,layout.spaces,layout.openings,footprint)
+    :placeFeatures(intent.rooms,layout.spaces,layout.openings);
   const rawPlan={
     version:1,
     scene:{
@@ -275,6 +304,8 @@ export function compileSceneIntent(raw,fallback={}) {
   };
   const plan=validatePlan(normalizePlan(rawPlan,fallback));
   migrateArt(plan);
+  // Namespaced anchor IDs may exceed the independent art-manifest ID limit.
+  if(intent.version===2)boundGeneratedArtIds(plan);
   plan.art.direction=intent.scene.visualDirection;
   return validateArt(validatePlan(plan));
 }
@@ -296,7 +327,7 @@ Return ONLY one JSON object. No markdown fences, comments, explanation or traili
 Use exactly this coordinate-free contract:
 {
   "kind": "scene-intent",
-  "version": 1,
+  "version": 2,
   "scene": {
     "name": "string",
     "description": "string",
@@ -312,12 +343,30 @@ Use exactly this coordinate-free contract:
       "floor": "stone|wood|dirt|metal|other",
       "features": [
         {
-          "id": "stable-semantic-id",
-          "type": "table|bed|altar|stairs|machine|furniture|other",
-          "description": "visible object description",
-          "size": "small|medium|large",
+          "id": "instantiator",
+          "role": "major-anchor",
+          "type": "machine",
+          "description": "Large copper Instantiator with a glowing portal",
+          "size": "large",
           "count": 1,
-          "lightPreset": "steady-lamp|flickering-lamp|flame|magic-portal|pulsing-magic|ambient-fill"
+          "placement": "centered",
+          "lightPreset": "magic-portal"
+        },
+        {
+          "id": "restraint-bed",
+          "role": "major-anchor",
+          "type": "bed",
+          "description": "Restraint bed, head/front directed at the Instantiator",
+          "size": "medium",
+          "count": 3,
+          "facing": "instantiator"
+        },
+        {
+          "id": "ordinary-dressing",
+          "role": "soft-dressing",
+          "type": "furniture",
+          "description": "Ordinary stools, scattered papers and instrument trays",
+          "count": 12
         }
       ],
       "ambientLight": false
@@ -328,9 +377,11 @@ Use exactly this coordinate-free contract:
 SEMANTIC RULES:
 1. Describe between 1 and ${MAX_ROOMS} requested rooms. Do not include a corridor room when using central-corridor; Scene Architect adds it.
 2. Use central-corridor for schools, hospitals, offices and other buildings where rooms need shared circulation. Use linear for sequences such as caves, tombs or railway spaces.
-3. Include every important room and feature from the brief. Feature count must be 1-${MAX_FEATURES_PER_ROOM}.
-4. Use stable unique semantic IDs. Do not include x, y, width, height, rotation, coordinates, openings, barriers, wall segments or light coordinates.
-5. Put a lightPreset on a visible feature when that object emits light. Use flickering-lamp for ordinary lanterns and oil lamps, and flame for candles, braziers, hearths, furnaces and other open flames. Reserve steady-lamp for genuinely constant magical or electric fixtures. Use ambientLight for non-directional room fill.
-6. Available Foundry animation keys are ${animationKeys}; semantic presets remain preferred.
-7. Return the semantic JSON once. Scene Architect deterministically constructs and validates the complete plan.`;
+3. Every feature MUST have a role. major-anchor means an important obstacle, exact-count object, relation target or native light source: the deterministic plan assigns its footprint and orientation. At most ${MAX_FEATURES_PER_ROOM} total anchor instances per room; count is 1-${MAX_FEATURES_PER_ROOM}, size is small|medium|large (default medium).
+4. soft-dressing means artwork-only ordinary furniture, clutter or decoration: retain description and count (1-200), never footprints or exact positions. Dressing counts are descriptive artwork requests, not guaranteed geometry counts. Use this role for most desks, chairs, shelves, towels, papers and ornament; promote objects needing exact counts/positions to anchors. At most 64 feature groups per room.
+5. Use stable unique semantic IDs within each room, and unique room IDs (not circulation). IDs normalize to lowercase hyphenated names; duplicates are errors, not renamed. Do not include x, y, width, height, rotation, coordinates, openings, barriers, wall segments or light coordinates.
+6. The ONLY optional spatial fields on a major-anchor are placement: "centered" (count must be 1) and facing: "target-id". Facing targets must be a named major-anchor in the SAME room with count 1, never a dressing group or ambiguous repeated object. Relations cannot form cycles. Omit placement for automatic placement. No against-wall, adjacency, free-text relations or other spatial fields. North=0 degrees, clockwise around the feature centre; the compiler turns the anchor's front/head toward the target's centre. Use facing, not description alone, for required facing.
+7. Put lightPreset ONLY on major-anchor sources emitting native light: steady-lamp|flickering-lamp|flame|magic-portal|pulsing-magic. Each instance produces one linked light at its deterministic centre. Soft dressing cannot emit native lights; promote a source explicitly. Use flickering-lamp for ordinary lanterns and oil lamps, and flame for candles, braziers, hearths, furnaces and other open flames. Reserve steady-lamp for genuinely constant magical or electric fixtures. Use room ambientLight for non-directional room fill, not a feature ambient-fill preset.
+8. Available Foundry animation keys are ${animationKeys}; semantic presets remain preferred. Older version 1 intents and saved low-level plans remain supported; generate version 2 for these strict semantics.
+9. Return the semantic JSON once. Scene Architect deterministically constructs and validates the complete plan. Frontier artwork supplies appearance and soft dressing only, never inferred geometry.`;
 }

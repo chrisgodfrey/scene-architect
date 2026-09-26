@@ -1,0 +1,73 @@
+{
+  "kind": "scene-intent",
+  "version": 2,
+  "scene": {
+    "name": "Municipal School and Civic Hall",
+    "description": "A furnished school, police station and courthouse sharing one public corridor. Ordinary furniture is rich soft dressing rather than individually packed geometry.",
+    "visualDirection": "Overhead civic interior, honey-coloured wood, cream plaster, green slate, scuffed stone, aged brass fittings and modest paper clutter. Clear room identity, painterly natural materials, no lettering or grid.",
+    "circulation": "central-corridor"
+  },
+  "rooms": [
+    {
+      "id": "classroom-one", "name": "Lower school classroom", "purpose": "Teaching and group study.", "size": "large", "floor": "wood", "ambientLight": true,
+      "features": [
+        {"id": "teacher-desk", "role": "major-anchor", "type": "desk", "description": "Teacher's substantial wooden desk", "size": "small", "count": 1},
+        {"id": "pupil-furniture", "role": "soft-dressing", "type": "furniture", "description": "Small pupil desks and chairs with slates and exercise books", "count": 30},
+        {"id": "teaching-supplies", "role": "soft-dressing", "type": "clutter", "description": "Bookcases, globe, chalkboards and lesson supplies", "count": 8}
+      ]
+    },
+    {
+      "id": "classroom-two", "name": "Upper school classroom", "purpose": "Older pupils and science demonstrations.", "size": "large", "floor": "wood", "ambientLight": true,
+      "features": [
+        {"id": "demonstration-table", "role": "major-anchor", "type": "table", "description": "Science demonstration table", "size": "small", "count": 1},
+        {"id": "study-furniture", "role": "soft-dressing", "type": "furniture", "description": "Student tables, chairs and open books", "count": 26}
+      ]
+    },
+    {
+      "id": "police-office", "name": "Police office", "purpose": "Reports, interviews and duty administration.", "size": "medium", "floor": "stone",
+      "features": [
+        {"id": "duty-desk", "role": "major-anchor", "type": "desk", "description": "Sergeant's duty desk", "size": "small", "count": 1},
+        {"id": "office-furniture", "role": "soft-dressing", "type": "furniture", "description": "Clerks' desks, chairs, record cabinets and coat stands", "count": 16}
+      ]
+    },
+    {
+      "id": "courtroom", "name": "Courtroom", "purpose": "Public hearings and local justice.", "size": "large", "floor": "wood", "ambientLight": true,
+      "features": [
+        {"id": "judges-bench", "role": "major-anchor", "type": "desk", "description": "Carved judge's bench with green leather writing surface", "size": "large", "count": 1, "placement": "centered"},
+        {"id": "public-seating", "role": "soft-dressing", "type": "furniture", "description": "Public benches, counsel tables and clerk's chairs", "count": 20}
+      ]
+    },
+    {
+      "id": "library", "name": "School library", "purpose": "Reading and book lending.", "size": "medium", "floor": "wood",
+      "features": [{"id": "library-furniture", "role": "soft-dressing", "type": "furniture", "description": "Bookshelves, reading tables, chairs and book carts", "count": 24}]
+    },
+    {
+      "id": "records", "name": "Civic records", "purpose": "Archive of cases and municipal records.", "size": "small", "floor": "stone",
+      "features": [{"id": "records-furniture", "role": "soft-dressing", "type": "furniture", "description": "Dense filing cabinets, shelving, document boxes and a copying desk", "count": 20}]
+    },
+    {
+      "id": "staff-room", "name": "Teachers' room", "purpose": "Staff preparation and breaks.", "size": "small", "floor": "wood",
+      "features": [{"id": "staff-furniture", "role": "soft-dressing", "type": "furniture", "description": "Armchairs, desks, a tea trolley and personal cupboards", "count": 10}]
+    },
+    {
+      "id": "evidence", "name": "Evidence store", "purpose": "Secure custody of recovered possessions.", "size": "small", "floor": "stone",
+      "features": [{"id": "evidence-furniture", "role": "soft-dressing", "type": "furniture", "description": "Locked cabinets, shelved boxes and an inventory table", "count": 12}]
+    },
+    {
+      "id": "headteacher", "name": "Headteacher's office", "purpose": "Quiet meetings and school administration.", "size": "small", "floor": "wood",
+      "features": [{"id": "office-dressing", "role": "soft-dressing", "type": "furniture", "description": "Writing desk, visitor chairs, bookshelves and potted fern", "count": 7}]
+    },
+    {
+      "id": "jury", "name": "Jury room", "purpose": "Private deliberation.", "size": "medium", "floor": "wood",
+      "features": [{"id": "jury-furniture", "role": "soft-dressing", "type": "furniture", "description": "Discussion table, chairs, water pitchers and coat hooks", "count": 16}]
+    },
+    {
+      "id": "washroom", "name": "Washroom", "purpose": "Shared civic amenities.", "size": "small", "floor": "tile",
+      "features": [{"id": "washroom-dressing", "role": "soft-dressing", "type": "furniture", "description": "Washbasins, towel rails, cabinets and cleaning supplies", "count": 8}]
+    },
+    {
+      "id": "waiting", "name": "Public waiting room", "purpose": "Visitors await appointments and hearings.", "size": "small", "floor": "stone",
+      "features": [{"id": "waiting-furniture", "role": "soft-dressing", "type": "furniture", "description": "Worn benches, umbrella stands, side tables and pamphlet racks", "count": 12}]
+    }
+  ]
+}

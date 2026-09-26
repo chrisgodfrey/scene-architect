@@ -1,11 +1,14 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Scene Architect browser verification</title>
+<html lang="en"><head><meta charset="utf-8"><base href="/"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scene Architect browser verification</title>
 <link rel="stylesheet" href="/styles/scene-architect.css">
 <style>
-body{background:#151922;color:#eee;font:15px system-ui;margin:20px}button,input,select,textarea{background:#292f3c;color:#eee;border:1px solid #687080;border-radius:4px;padding:7px;font:inherit}button{cursor:pointer}button:hover{background:#424b60}h1{font-size:22px}summary{cursor:pointer}.scene-architect{max-width:1000px;margin:auto}.sa-shell{min-width:0!important}.sa-actions>*{flex:1}.sa-actions{align-items:center}.sa-grid{margin-top:12px}#results{white-space:pre-wrap;color:#aeeebc;max-width:1000px;margin:auto}#assembly{display:block;max-width:1000px;width:100%;margin:20px auto}#banner{max-width:1000px;margin:20px auto;color:#e7c481}
+body{background:#151922;color:#eee;font:15px system-ui;margin:20px}button,input,select,textarea{background:#292f3c;color:#eee;border:1px solid #687080;border-radius:4px;padding:7px;font:inherit}button{cursor:pointer}button:hover{background:#424b60}h1{font-size:22px}summary{cursor:pointer}.scene-architect{max-width:1000px;margin:auto}.sa-shell{min-width:0!important}.sa-actions>*{flex:1}.sa-actions{align-items:center}.sa-grid{margin-top:12px}#results{white-space:pre-wrap;color:#aeeebc;max-width:1000px;margin:auto}#assembly{display:block;max-width:1000px;width:100%;margin:20px auto}#banner{max-width:1000px;margin:20px auto;color:#e7c481}#samples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}#samples figure{margin:0}#samples img{width:100%;height:auto}button:disabled{opacity:.55;cursor:not-allowed}
 </style></head><body>
 <h1>Scene Architect — local browser verification</h1><p id="banner">Synthetic test images only. Foundry document and application APIs are mocked.</p>
-<pre id="results">Running…</pre><img id="assembly" alt="Laboratory assembled with synthetic test assets">
+<details id="check-details"><summary id="check-summary">Browser checks running…</summary><pre id="results">Running…</pre></details>
+<details><summary>Deprecated renderer compatibility sample</summary><img id="assembly" alt="Laboratory assembled with synthetic test assets"></details>
+<section aria-label="Persistent synthetic composition samples" id="samples"></section>
+<details id="existing-artwork"><summary>Optional earlier five-room artwork — qualitative evidence only</summary><p id="existing-artwork-note">Checking optional source…</p></details>
 <div id="wizard" class="scene-architect"></div>
 <script src="/node_modules/handlebars/dist/handlebars.js"></script>
 <script type="module" src="/tests/browser-checks.js"></script>

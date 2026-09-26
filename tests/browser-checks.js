@@ -1,383 +1,359 @@
 import {renderSceneArt,renderProp,makeCanvas,compositePreview,canvasBlob,loadImage} from '../scripts/renderer.js';
 import {validatePlan} from '../scripts/plan.js';
 import {usedAssets} from '../scripts/art-manifest.js';
+import {compileSceneIntent} from '../scripts/plan-generator.js';
 import {compileGeometry} from '../scripts/geometry.js';
-import {wallDataFromSegment} from '../scripts/foundry-data.js';
+import {architecturalRegions} from '../scripts/architecture.js';
+import {composeArtwork,renderStructuralMask} from '../scripts/artwork-compositor.js';
+import {renderReference,renderAnchorMask} from '../scripts/render-handoff.js';
 import {projectFromScene} from '../scripts/project.js';
-import {renderGuide,renderWholeMap} from '../scripts/whole-map.js';
-import {analysisFrame} from '../scripts/image-geometry.js';
 import {applyDocumentUpdate} from './mock-update.js';
+import {checkComposition,checkStructuralVariants} from './composition-browser.js';
 
 const results=[],assert=(truth,message)=>{if(!truth)throw new Error(message);results.push(message);};
 const pixel=(canvas,x,y)=>[...canvas.getContext('2d').getImageData(x,y,1,1).data];
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const output=async(name,blob)=>{const response=await fetch('/output/'+name,{method:'POST',body:blob});if(!response.ok)throw new Error('Output failed: '+name);};
+const rejects=async(fn,pattern,message)=>{let caught;try {await fn();}catch(error){caught=error;}assert(caught&&pattern.test(caught.message),`${message}${caught?'':': expected rejection'}`);};
+let priorArtwork={status:'not-checked',scope:'Earlier five-room laboratory artwork only; not new six-room/three-scene validation or visual acceptance.'};
 const fixture=await (await fetch('/fixtures/laboratory.json')).json();
-const fullCrop={x:0,y:0,width:1,height:1};
-const images=new Map();
+const fullCrop={x:0,y:0,width:1,height:1},images=new Map();
 const colours={'surround-rock':'#202a34','wall-stone':'#ad8d68','floor-1-stone':'#657780','floor-2-metal':'#496370'};
-for(const a of usedAssets(fixture)) {
-  const c=makeCanvas(a.kind==='prop'?Math.round(128*a.ratio):128,128),ctx=c.getContext('2d');
-  if(a.kind==='material'){ctx.fillStyle=colours[a.id];ctx.fillRect(0,0,c.width,c.height);}
-  else {ctx.fillStyle=a.id==='vapour'?'#a56dbb66':'#c4a577';ctx.fillRect(c.width*.08,10,c.width*.84,108);ctx.fillStyle='#2b363e';ctx.fillRect(c.width*.2,26,c.width*.6,70);ctx.fillStyle='white';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('SYNTHETIC',c.width/2,65,c.width-8);}
-  images.set(a.id,c);fixture.art.assignments[a.id]={src:a.id+'.png',fit:'contain',crop:fullCrop};
+for(const asset of usedAssets(fixture)) {
+  const c=makeCanvas(asset.kind==='prop'?Math.round(128*asset.ratio):128,128),ctx=c.getContext('2d');
+  if(asset.kind==='material'){ctx.fillStyle=colours[asset.id];ctx.fillRect(0,0,c.width,c.height);}
+  else {ctx.fillStyle=asset.id==='vapour'?'#a56dbb66':'#c4a577';ctx.fillRect(c.width*.08,10,c.width*.84,108);ctx.fillStyle='#2b363e';ctx.fillRect(c.width*.2,26,c.width*.6,70);ctx.fillStyle='white';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('SYNTHETIC',c.width/2,65,c.width-8);}
+  images.set(asset.id,c);fixture.art.assignments[asset.id]={src:asset.id+'.png',fit:'contain',crop:fullCrop};
 }
-
 try {
-  validatePlan(fixture);
+  checkStructuralVariants(assert);
+  checkComposition(fixture,assert);validatePlan(fixture);
   let loads=0;
   const rendered=await renderSceneArt(fixture,{imageLoader:async src=>{loads++;return images.get(src.replace('.png',''));}});
-  assert(loads===11,'Renderer loads exactly the 11 used assets');
-  assert(rendered.props.length===11,'Renderer places exactly 11 feature instances');
+  assert(loads===11,'Legacy renderer loads exactly 11 used assets');
+  assert(rendered.props.length===11,'Legacy renderer places exactly 11 feature instances');
   const beds=rendered.props.filter(p=>p.feature.assetId==='restraint-bed');
   assert(beds.length===3&&beds[0].canvas===beds[1].canvas&&beds[1].canvas===beds[2].canvas,'Three restraint beds share one fitted texture');
-  assert(same(pixel(rendered.background,40,40),[32,42,52,255]),'Surrounding material stays outside rooms');
+  assert(same(pixel(rendered.background,40,40),[32,42,52,255]),'Legacy surrounding material stays outside rooms');
   assert(same(pixel(rendered.background,9*70,9*70),[101,119,128,255]),'Exact room interior receives stone floor');
-  assert(same(pixel(rendered.background,4*70,9*70),[73,99,112,255]),'Adjoining machinery room receives its own floor');
-  assert(same(pixel(rendered.background,8*70,13*70),[173,141,104,255]),'Solid wall boundary receives wall texture');
-  assert(same(pixel(rendered.background,8*70,11*70),[101,119,128,255]),'Native door span remains clear in static background');
-  assert(same(pixel(rendered.background,8*70,17*70),[101,119,128,255]),'Open passage remains clear in static background');
-  assert(same(pixel(rendered.background,14*70,8*70),[101,119,128,255]),'Secret doorway has no permanently closed door painting');
+  assert(same(pixel(rendered.background,4*70,9*70),[73,99,112,255]),'Adjoining room receives its own floor');
+  assert(same(pixel(rendered.background,8*70,13*70),[173,141,104,255]),'Solid legacy wall receives wall texture');
+  assert(same(pixel(rendered.background,8*70,11*70),[101,119,128,255]),'Legacy native door span stays clear');
+  assert(same(pixel(rendered.background,8*70,17*70),[101,119,128,255]),'Legacy open passage stays clear');
+  assert(same(pixel(rendered.background,14*70,8*70),[101,119,128,255]),'Legacy secret doorway does not paint a closed door');
   assert(same(pixel(rendered.background,9*70,9*70),pixel(rendered.background,9*70+1,9*70+1)),'Renderer adds no baked grid');
-  assert(pixel(beds[0].canvas,0,0)[3]===0,'Transparent source remains transparent at prop corners');
+  assert(pixel(beds[0].canvas,0,0)[3]===0,'Transparent source remains transparent');
   const source=makeCanvas(200,100),sc=source.getContext('2d');sc.fillStyle='red';sc.fillRect(0,0,100,100);sc.fillStyle='lime';sc.fillRect(100,0,100,100);
   const contained=renderProp(source,{crop:fullCrop,fit:'contain'},100,100,{shadows:false});
-  assert(pixel(contained,50,1)[3]===0&&pixel(contained,50,50)[3]===255,'Contain keeps proportions and transparent letterboxing');
-  const cropped=renderProp(source,{crop:{x:.5,y:0,width:.5,height:1},fit:'cover'},100,100,{shadows:false});
-  assert(same(pixel(cropped,10,10),[0,255,0,255]),'Crop selects the requested source region without background removal');
-  const opaque=renderProp(source,{crop:fullCrop,fit:'cover'},100,100,{shadows:false});
-  assert(pixel(opaque,0,0)[3]===255,'Opaque image backgrounds are preserved');
-  const assembly=compositePreview(rendered,fixture);
-  const png=await canvasBlob(assembly);await fetch('/output/laboratory-synthetic.png',{method:'POST',body:png});
+  assert(pixel(contained,50,1)[3]===0&&pixel(contained,50,50)[3]===255,'Contain preserves proportional letterboxing');
+  assert(same(pixel(renderProp(source,{crop:{x:.5,y:0,width:.5,height:1},fit:'cover'},100,100,{shadows:false}),10,10),[0,255,0,255]),'Legacy crop selects the requested source region');
+  assert(pixel(renderProp(source,{crop:fullCrop,fit:'cover'},100,100,{shadows:false}),0,0)[3]===255,'Opaque backgrounds are preserved');
+  const assembly=compositePreview(rendered,fixture),png=await canvasBlob(assembly);await output('laboratory-legacy-synthetic.png',png);
   document.querySelector('#assembly').src=URL.createObjectURL(png);
-  // Actual image decoding, PNG alpha round-trip and canvas encoding in Chromium.
-  const bedBlob=await canvasBlob(images.get('restraint-bed')),bedUrl=URL.createObjectURL(bedBlob),bedImage=await loadImage(bedUrl);
+  const bedUrl=URL.createObjectURL(await canvasBlob(images.get('restraint-bed'))),bedImage=await loadImage(bedUrl);
   assert(bedImage.width===64&&bedImage.height===128,'PNG source decodes at original proportions');URL.revokeObjectURL(bedUrl);
 
-  // Mock only Foundry's host APIs; render the production Handlebars template and call real actions.
-  const template=Handlebars.compile(await (await fetch('/templates/scene-architect.hbs')).text());
-  const notices=[];
-  globalThis.ui={notifications:{info:m=>notices.push(m),warn:m=>notices.push(m),error:m=>notices.push(m)}};
-  const scenes=new Map();
-  globalThis.game={scenes:{get:id=>scenes.get(id),[Symbol.iterator]:()=>scenes.values()},user:{isGM:true},world:{id:'mock-world'}};
-  class App {
-    async render(){this.element=document.querySelector('#wizard');this.element.innerHTML=template(await this._prepareContext());this.element.onclick=e=>{const button=e.target.closest('[data-action]');if(button)this.constructor.DEFAULT_OPTIONS.actions[button.dataset.action].call(this,e,button);};return this;}
+  const plans=new Map(),synthetics=new Map();
+  for(const name of ['laboratory','civic','bathhouse']) {
+    const intent=await (await fetch(`/fixtures/intents/${name}.json`)).json();
+    const plan=compileSceneIntent(intent,{columns:40,rows:32,gridSize:70});plans.set(name,plan);
+    const regions=architecturalRegions(plan),image=makeCanvas(regions.width,regions.height),ctx=image.getContext('2d');
+    ctx.fillStyle='#35444f';ctx.fillRect(0,0,image.width,image.height);
+    for(const [i,room] of regions.rooms.entries()) {ctx.fillStyle=['#52666d','#655952','#565d75'][i%3];ctx.fillRect(room.x,room.y,room.width,room.height);ctx.fillStyle='#eeeeee';ctx.font='28px sans-serif';ctx.fillText('SYNTHETIC TEST',room.x+40,room.y+70);}
+    const blob=await canvasBlob(image);synthetics.set(name,new File([blob],`${name}-synthetic-source.png`,{type:'image/png'}));
+    await output(`${name}-synthetic-source.png`,blob);
+    const composed=composeArtwork(plan,image).canvas;
+    await output(`${name}-synthetic-composite.png`,await canvasBlob(composed));
+    await output(`${name}-reference.png`,await canvasBlob(renderReference(plan)));
+    await output(`${name}-protected-mask.png`,await canvasBlob(renderStructuralMask(regions)));
+    await output(`${name}-anchor-mask.png`,await canvasBlob(renderAnchorMask(plan)));
+    const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');
+    img.src=`/output/${name}-synthetic-composite.png`;img.alt=`${name}: synthetic composition test, not model artwork`;
+    caption.textContent=`${name} — synthetic test colours, NOT evidence of generated-art quality`;figure.append(img,caption);document.querySelector('#samples').append(figure);
+    checkComposition(plan,assert);
   }
-  const uploads=[];
-  globalThis.foundry={applications:{api:{ApplicationV2:App,HandlebarsApplicationMixin:x=>x,DialogV2:{confirm:async()=>true,input:async()=>{}}},apps:{FilePicker:{createDirectory:async()=>{},upload:async(_source,_dir,file)=>{uploads.push(file);const path='/output/'+file.name;await fetch(path,{method:'POST',body:file});return {path};}}}},utils:{}};
-  let clipboardText='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{clipboardText=text;}}});
-  globalThis.Hooks={once:()=>{},on:()=>{}};
+  // Optional ignored artifact: normal browser tests must not depend on its presence.
+  try {
+    const response=await fetch('/test-output/geometry-proof/source.png');
+    if(response.status===404)priorArtwork={...priorArtwork,status:'absent',message:'Optional earlier artwork source is absent; no qualitative composite exported.'};
+    else {
+      if(!response.ok)throw new Error(`Optional source request failed: HTTP ${response.status}`);
+      const url=URL.createObjectURL(await response.blob());
+      try {
+        const image=await loadImage(url),composite=composeArtwork(fixture,image).canvas;
+        await output('existing-laboratory-composite.png',await canvasBlob(composite));
+        await output('existing-laboratory-reference.png',await canvasBlob(renderReference(fixture)));
+        priorArtwork={...priorArtwork,status:'exported',sourceWidth:image.width,sourceHeight:image.height,
+          outputs:['existing-laboratory-composite.png','existing-laboratory-reference.png'],
+          message:'Earlier five-room laboratory source recomposited for human inspection only. Oblique objects and feature alignment are not automatically accepted.'};
+        const img=document.createElement('img');img.src='/output/existing-laboratory-composite.png';img.alt='Earlier five-room laboratory artwork with authoritative architecture; not visually accepted';img.style.maxWidth='100%';
+        document.querySelector('#existing-artwork').append(img);
+      } finally {URL.revokeObjectURL(url);}
+    }
+  } catch(error) {
+    console.warn('Optional earlier-artwork evidence unavailable',error);
+    priorArtwork={...priorArtwork,status:'unavailable',message:`Optional earlier artwork could not be composed: ${error.message}`};
+  }
+  document.querySelector('#existing-artwork-note').textContent=`${priorArtwork.message} ${priorArtwork.scope}`;
+  const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const galleryImage=(name,label)=>`<figure><a href="${name}"><img loading="lazy" src="${name}" alt="${escapeHtml(label)}"></a><figcaption><a href="${name}">${escapeHtml(label)}</a></figcaption></figure>`;
+  const syntheticSections=['laboratory','civic','bathhouse'].map(name=>`<section id="${name}"><h2>${name[0].toUpperCase()+name.slice(1)} — synthetic v2 test</h2>
+    <p>40 × 32 cells. Flat test colours and text only: not model-generated artwork, not furnished-room validation, and not visual acceptance.</p>
+    <div class="images">${[
+      [`${name}-synthetic-source.png`,'Synthetic source'],
+      [`${name}-reference.png`,'Annotated reference'],
+      [`${name}-protected-mask.png`,'Protected structural mask'],
+      [`${name}-anchor-mask.png`,'Major-anchor mask'],
+      [`${name}-synthetic-composite.png`,'Authoritative composite']
+    ].map(([file,label])=>galleryImage(file,`${name}: ${label}`)).join('')}</div></section>`).join('');
+  const priorSection=priorArtwork.status==='exported'
+    ? `<p>Existing 1355 × 1161 model artwork, recomposited against the older 28 × 24, five-room laboratory plan. Oblique machinery and feature alignment still require inspection. This is NOT the new six-room laboratory, NOT three-scene model validation, and NOT visual acceptance.</p><div class="images">${
+      galleryImage('geometry-proof/source.png','Earlier five-room original artwork')+
+      galleryImage('existing-laboratory-reference.png','Earlier five-room annotated reference')+
+      galleryImage('existing-laboratory-composite.png','Earlier five-room authoritative composite')}</div>`
+    : `<p>${escapeHtml(priorArtwork.message)} Any older files left in this directory are not evidence from this run.</p>`;
+  await output('composition-gallery.html',`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scene Architect — persistent composition evidence</title>
+<style>body{margin:0;background:#151922;color:#eee;font:16px/1.5 system-ui}main{max-width:1500px;margin:auto;padding:24px}a{color:#a5d7ff}a:focus-visible{outline:3px solid #ffca59;outline-offset:4px}h1{font-size:1.8rem}section{margin:24px 0;padding:18px;border:1px solid #727989;border-radius:8px}.notice{border-left:4px solid #ffca59;padding:12px;background:#262c38}.images{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}figure{margin:0;min-width:0}img{display:block;width:100%;height:auto;background:#070b10;border:1px solid #727989}figcaption{padding-top:8px}nav{display:flex;gap:20px;flex-wrap:wrap}</style></head>
+<body><main><h1>Scene Architect — persistent composition evidence</h1>
+<p class="notice"><strong>Evidence limitations:</strong> The three v2 scenes below are synthetic compositor tests. They do not demonstrate generated-art quality, feature fidelity, playable Foundry behaviour, or visual acceptance. Optional prior artwork is a separate, earlier five-room example.</p>
+<p>Exported ${escapeHtml(new Date().toISOString())}. This static file opens directly from disk; no server or harness rerun is required. Select any thumbnail or caption to inspect its full-resolution PNG.</p>
+<nav aria-label="Evidence sections"><a href="#laboratory">Laboratory</a><a href="#civic">Civic</a><a href="#bathhouse">Bathhouse</a><a href="#prior">Earlier five-room artwork</a><a href="browser-results.json">Browser results JSON</a></nav>
+${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork — qualitative inspection only</h2>${priorSection}</section>
+<p>Foundry APIs were mocked in browser verification. Test native vision, doors and lighting in a real Foundry v14 installation before acceptance.</p>
+</main></body></html>`);
+
+  // Real production template, real image decoding/canvas; only Foundry host APIs are mocked.
+  const template=Handlebars.compile(await (await fetch('/templates/scene-architect.hbs')).text());
+  const notices=[],scenes=new Map(),settings=new Map(),uploads=[],downloads=[],mutations=[];
+  const faults={};
+  let clipboardText='',confirm=true,dialogValue=null;
+  globalThis.ui={notifications:{info:m=>notices.push(m),warn:m=>notices.push(m),error:m=>notices.push(m)}};
+  globalThis.game={scenes:{get:id=>scenes.get(id),[Symbol.iterator]:()=>scenes.values()},user:{isGM:true},world:{id:'mock-world'},
+    settings:{register:(_scope,key,config)=>{if(!settings.has(key))settings.set(key,config.default);},get:(_scope,key)=>settings.get(key),set:async(_scope,key,value)=>{settings.set(key,value);}}};
+  class App {
+    async render(){this.element=document.querySelector('#wizard');const context=await this._prepareContext();this.element.innerHTML=template(context);
+      this.element.onclick=e=>{const button=e.target.closest('[data-action]');if(button&&!button.disabled)this.constructor.DEFAULT_OPTIONS.actions[button.dataset.action].call(this,e,button);};
+      await this._onRender(context,{});return this;}
+    async close(){this.element?.replaceChildren();}
+  }
+  document.addEventListener('click',e=>{const link=e.target.closest('a[download]');if(link){e.preventDefault();downloads.push({name:link.download,href:link.href});}});
+  globalThis.foundry={applications:{api:{ApplicationV2:App,HandlebarsApplicationMixin:x=>x,DialogV2:{
+    confirm:async()=>confirm,input:async()=>dialogValue}},apps:{FilePicker:{
+      createDirectory:async()=>{},browse:async()=>({}),
+      upload:async(_source,_dir,file)=>{
+        if(faults.upload){faults.upload=false;throw new Error('Injected upload failure');}
+        uploads.push(file);await output(file.name,file);
+        if(faults.afterUpload){const callback=faults.afterUpload;delete faults.afterUpload;callback();}
+        return {path:'/output/'+file.name};
+      }}}},utils:{saveDataToFile:async(text,type,name)=>downloads.push({text,type,name})}};
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{clipboardText=text;}}});
+  globalThis.Hooks={once:(event,fn)=>{if(event==='init')fn();},on:()=>{}};
   globalThis.CONST={GRID_TYPES:{SQUARE:1},WALL_DOOR_TYPES:{DOOR:1,SECRET:2}};
-  globalThis.CONFIG={Canvas:{lightAnimations:{flicker:{},torch:{},rainbowswirl:{},pulse:{}}}};
-  const {SceneArchitectApp,buildSceneIntentPrompt,buildLayoutPrompt}=await import('../scripts/scene-architect.js');
-  const intentPrompt=buildSceneIntentPrompt({brief:'An old school with four classrooms',sceneName:'School',columns:34,rows:28,gridSize:70,animations:['flicker','rainbowswirl']});
-  assert(intentPrompt.includes('"kind": "scene-intent"')&&intentPrompt.includes('"circulation": "linear|central-corridor"')&&intentPrompt.includes('Do not include x, y, width, height')&&intentPrompt.includes('Use flickering-lamp for ordinary lanterns and oil lamps'),'Primary scene design prompt requests coordinate-free semantic intent with bounded circulation and animated practical lights');
-  const layoutPrompt=buildLayoutPrompt({brief:'Portal room',sceneName:'Test',columns:20,rows:20,gridSize:70},['flicker','rainbowswirl']);
-  assert(layoutPrompt.includes('"spaces"')&&layoutPrompt.includes('"preset":"flickering-lamp"')&&layoutPrompt.includes('sourceFeatureId')&&layoutPrompt.includes('flicker, rainbowswirl'),'Advanced low-level layout prompt retains its coordinate and semantic-light contract');
-  const p=structuredClone(fixture);p.art.assignments={};
-  const plannedApp=new SceneArchitectApp();plannedApp.usePlan(structuredClone(fixture));await plannedApp.render();
-  assert(plannedApp.element.querySelectorAll('.sa-primary').length===1&&plannedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft'&&plannedApp.element.querySelectorAll('[aria-current="step"]').length===1&&plannedApp.element.querySelector('[aria-current="step"]').dataset.step==='1'&&plannedApp.element.querySelector('.sa-step[data-step="1"] details').open,'Planned workflow identifies draft creation as its one primary action and opens only the current planning step');
-  const schoolIntent={
-    kind:'scene-intent',version:1,
-    scene:{name:'Old School',description:'An old school with four classrooms, a library and staff room.',visualDirection:'Top-down old-school fantasy map.',circulation:'central-corridor'},
-    rooms:[
-      {id:'classroom-1',name:'Classroom one',purpose:'Old desks and a teacher lectern',size:'medium',floor:'wood',features:[{id:'teacher-desk',type:'desk',description:'Teacher desk',size:'small',count:1}],ambientLight:true},
-      {id:'classroom-2',name:'Classroom two',purpose:'Rows of student desks',size:'medium',floor:'wood',features:[],ambientLight:true},
-      {id:'classroom-3',name:'Classroom three',purpose:'Dusty classroom',size:'medium',floor:'wood',features:[],ambientLight:true},
-      {id:'classroom-4',name:'Classroom four',purpose:'Abandoned classroom',size:'medium',floor:'wood',features:[],ambientLight:true},
-      {id:'library',name:'Library',purpose:'Book stacks and reading tables',size:'large',floor:'wood',features:[{id:'reading-table',type:'table',description:'Reading table',size:'medium',count:2}],ambientLight:true},
-      {id:'staff',name:'Staff room',purpose:'Teachers meeting room',size:'small',floor:'wood',features:[],ambientLight:true}
-    ]
-  };
-  const generatedApp=new SceneArchitectApp();await generatedApp.render();
-  assert(generatedApp.element.querySelector('.sa-primary').dataset.action==='copyLayoutPrompt','New workflow makes the scene design request the one primary action');
-  await generatedApp.run('copyLayoutPrompt');
-  assert(clipboardText.includes('"kind": "scene-intent"')&&generatedApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&generatedApp.element.querySelector('[data-next-action-text]').textContent.includes('generated scene design'),'Copying the scene design request advances the primary guidance to one semantic import');
-  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(schoolIntent)});
-  await generatedApp.run('pastePlan');
-  assert(generatedApp.workflow.plan&&!generatedApp.workflow.planRepair&&generatedApp.workflow.plan.spaces.some(space=>space.id==='circulation')&&generatedApp.workflow.plan.openings.length===schoolIntent.rooms.length,'Generated school intent compiles locally into a valid central-corridor plan without repair state');
-  assert(generatedApp.element.querySelector('.sa-primary').dataset.action==='buildDraft'&&!generatedApp.element.textContent.includes('Advanced plan not accepted'),'Successful semantic import advances directly to draft creation');
-  const validGeneratedPlan=generatedApp.workflow.plan;
-  const overCapacity=structuredClone(schoolIntent);overCapacity.rooms=Array.from({length:20},(_,index)=>({...schoolIntent.rooms[0],id:`room-${index}`,name:`Room ${index}`,features:[]}));
-  generatedApp.workflow.columns=12;generatedApp.workflow.rows=12;
-  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(overCapacity)});
-  await generatedApp.run('pastePlan');
-  assert(generatedApp.workflow.plan===validGeneratedPlan&&!generatedApp.workflow.planRepair,'Semantic capacity failure preserves the current valid plan and never enters low-level plan repair');
-  foundry.applications.api.DialogV2.input=async()=>({json:JSON.stringify(fixture)});
-  await generatedApp.run('pastePlan');
-  assert(generatedApp.workflow.plan===validGeneratedPlan&&!generatedApp.workflow.planRepair&&notices.at(-1).includes('kind must be "scene-intent"'),'Primary import rejects low-level plan JSON atomically and keeps repair state exclusive to Advanced');
-  const invalidPlan=structuredClone(fixture),firstProp=invalidPlan.features[0],overlappingProp=invalidPlan.features[1];
-  overlappingProp.x=firstProp.x;overlappingProp.y=firstProp.y;
-  const rejectedJson=JSON.stringify(invalidPlan,null,2),dialogResults=[{json:rejectedJson}];
-  foundry.applications.api.DialogV2.input=async()=>dialogResults.shift();
-  const repairApp=new SceneArchitectApp();await repairApp.render();await repairApp.run('pastePlan',{dataset:{mode:'advanced'}});
-  assert(repairApp.workflow.planRepair?.json===rejectedJson&&repairApp.workflow.planRepair.error==='Props restraint-1 and restraint-2 overlap.'&&repairApp.element.textContent.includes('Props restraint-1 and restraint-2 overlap.'),'Rejected plan JSON and the exact validation error remain available in persistent correction guidance');
-  assert(repairApp.element.querySelector('.sa-primary').dataset.action==='copyPlanRepairPrompt'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('correction request'),'Validation failure makes the correction request the primary guided action');
-  await repairApp.run('copyPlanRepairPrompt');
-  assert(clipboardText.includes('"validatorError": "Props restraint-1 and restraint-2 overlap."')&&clipboardText.includes('"rejectedPlanText"')&&clipboardText.includes('untrusted data'),'Correction request includes bounded validation evidence and labels model-produced content as untrusted data');
-  assert(repairApp.element.querySelector('.sa-primary').dataset.action==='pastePlan'&&repairApp.element.querySelector('[data-next-action-text]').textContent.includes('corrected low-level plan JSON'),'Copied correction request advances the primary guidance to corrected JSON import');
-  dialogResults.push({json:JSON.stringify(fixture)});await repairApp.run('pastePlan',{dataset:{mode:'advanced'}});
-  assert(repairApp.workflow.plan&&!repairApp.workflow.planRepair&&repairApp.element.querySelector('.sa-primary').dataset.action==='buildDraft','A valid corrected plan clears repair state and resumes the normal draft workflow');
-  const scene={id:'browser-scene',name:p.scene.name,width:1960,height:1680,grid:{type:1,size:70,distance:5,units:'ft'},walls:compileGeometry(p).map((e,i)=>({...wallDataFromSegment(e,70),_id:`old-wall-${i}`})),
-    lights:[
-      {_id:'managed-portal',id:'managed-portal',name:'Managed portal',x:700,y:600,config:{dim:8,bright:3,color:'#954aff',animation:{type:'rainbowswirl',speed:3,intensity:6,reverse:false}},flags:{'scene-architect':{generated:true,preset:'magic-portal',sourceId:'plan-light-1-portal'}}},
-      {_id:'managed-lamp',id:'managed-lamp',name:'Managed lamp',x:1200,y:800,config:{dim:6,bright:2,color:'#ffb45b',animation:{type:'flicker',speed:3,intensity:4,reverse:false}},flags:{'scene-architect':{generated:true,preset:'flickering-lamp',sourceId:'plan-light-2-lamp'}}},
-      {_id:'protected-light',id:'protected-light',name:'GM light',x:1500,y:1100,config:{dim:5,bright:1,color:'#ffffff',animation:{type:'',speed:5,intensity:5,reverse:false}},flags:{custom:{owner:true}}}
-    ],
-    tiles:[],flags:{'scene-architect':{plan:p}},firstLevel:{background:{src:''},async update(data){this.background.src=data['background.src'];}},
-    getFlag(scope,key){return this.flags[scope]?.[key];},async setFlag(scope,key,value){this.flags[scope][key]=structuredClone(value);},
-    async update(data){applyDocumentUpdate(this,data);},
-    async createEmbeddedDocuments(type,items,options={}){const key=type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles';const docs=items.map(x=>{const id=options.keepId?x._id:crypto.randomUUID();return {...structuredClone(x),_id:id,id};});this[key].push(...docs);return docs;},
-    async deleteEmbeddedDocuments(type,ids){const key=type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles';this[key]=this[key].filter(t=>!ids.includes(t.id??t._id));}};
-  scenes.set(scene.id,scene);
-  const app=new SceneArchitectApp();app.workflow=projectFromScene(scene);await app.render();
-  assert(document.querySelectorAll('[name="mapFile"]').length===1&&!document.querySelector('[data-asset-id]'),'Wizard requests one complete map with no asset slots');
-  assert(document.querySelectorAll('.sa-primary').length===1&&document.querySelector('.sa-primary').dataset.action==='exportGuide'&&document.querySelectorAll('[aria-current="step"]').length===1&&document.querySelector('.sa-progress-item[data-step="1"]').classList.contains('is-complete')&&document.querySelector('[aria-current="step"]').dataset.step==='2','Wizard exposes exactly one primary next action with planning complete and generation current');
-  const reference=await app.markReferenceExported();await app.render();
-  assert(reference.referenceExportedAt&&!reference.imageId&&document.querySelector('.sa-primary').dataset.action==='copyMapPrompt','Exporting the reference advances the wizard without creating a same-chat generation identity');
-  const guide=renderGuide(p,scene);
-  assert(guide.width===1960&&guide.height===1680,'PNG reference uses the exact full-scene dimensions');
-  await fetch('/output/map-reference.png',{method:'POST',body:await canvasBlob(guide)});
-  const transfer=new DataTransfer();transfer.items.add(new File([await canvasBlob(source)],'whole-map.png',{type:'image/png'}));app.element.querySelector('[name="mapFile"]').files=transfer.files;
-  await app.previewMap();
-  assert(!!app.element.querySelector('.sa-map-preview canvas')&&!app.element.querySelector('[name="showWalls"]')&&same(pixel(app.element.querySelector('.sa-map-preview canvas'),100,35),[255,0,0,255]),'Stage 3 shows the complete artwork without a stale wall-overlay control');
-  assert(app.element.textContent.includes('pure 90° top-down orthographic 2D map')&&app.element.textContent.includes('Reject and regenerate artwork')&&app.element.textContent.includes('visible vertical wall faces'),'Map generation and artwork acceptance require a non-perspective orthographic image');
-  assert(app.element.querySelector('.sa-map-warning').textContent.includes('aspect ratio'),'Different aspect ratio produces a visible stretching warning');
-  assert(app.element.querySelector('.sa-primary').dataset.action==='applyMap'&&app.element.querySelector('[data-next-action-text]').textContent.includes('continue to scene fitting'),'Artwork preview keeps the primary button and required scene-fit handoff in agreement');
-  scene.walls[0].c=[15,35,200,35];scene.walls[0].door=1;
-  const withWalls=renderWholeMap(source,scene,{},true),withoutWalls=renderWholeMap(source,scene,{},false);
-  assert(same(pixel(withWalls,100,35),[56,189,248,255]),'Preview uses edited native door coordinates and type');
-  assert(same(pixel(withoutWalls,100,35),[255,0,0,255]),'Applied image contains no wall overlay');
-  const shifted=renderWholeMap(source,scene,{scale:1,x:100,y:50});
-  assert(same(pixel(shifted,10,10),[24,26,31,255])&&same(pixel(shifted,200,200),[255,0,0,255]),'Global offsets reposition image and fill exposed canvas');
-  scene.tiles=[{id:'legacy',flags:{'scene-architect':{generated:true}}},{id:'custom',flags:{}}];
-  const documents=JSON.stringify([scene.walls,scene.lights,scene.tiles]);
-  let confirmText='';foundry.applications.api.DialogV2.confirm=async options=>{confirmText=options.content;return true;};
-  await app.applyMap();
-  assert(uploads.length===2&&scene.firstLevel.background.src.endsWith('-map.png'),'Apply uploads the original source and fitted full-map background');
-  assert(scene.getFlag('scene-architect','map').generationId===null&&app.element.querySelector('.sa-primary').dataset.action==='exportSceneFitImage'&&app.element.querySelectorAll('[aria-current="step"]').length===1&&app.element.querySelectorAll('.sa-progress-item').length===5&&app.element.querySelector('[aria-current="step"]').dataset.step==='4'&&app.element.querySelector('.sa-step[data-step="4"] details').open&&!app.element.textContent.includes('optional'),'A map applied without a generation identity opens one required fitted-image scene-fit stage in the five-stage journey');
-  const createURL=URL.createObjectURL,anchorClick=HTMLAnchorElement.prototype.click;let exportedBlob;
-  HTMLAnchorElement.prototype.click=function(){};
-  URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
-  await app.exportSceneFitImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
-  const combinedExportUrl=URL.createObjectURL(exportedBlob),combinedExport=await loadImage(combinedExportUrl);
-  assert(combinedExport.width===scene.width&&clipboardText.includes('"kind":"scene-fit"')&&(clipboardText.match(/Return ONLY/g)??[]).length===1&&clipboardText.includes('REGISTERED PRIOR')&&clipboardText.includes('REGISTERED LIGHT PRIOR'),'Combined fitted fallback downloads one registered comparison and copies one wrapper prompt');
-  URL.revokeObjectURL(combinedExportUrl);
-  await scene.setFlag('scene-architect','geometryRequest',null);await scene.setFlag('scene-architect','lightingRequest',null);
-  assert(JSON.stringify([scene.walls,scene.lights,scene.tiles])===documents,'Applying preserves manually edited walls, lights and all existing Tiles');
-  assert(confirmText.includes('older Scene Architect prop Tiles')&&confirmText.includes('aspect ratio'),'Confirmation explains legacy Tiles and aspect-ratio stretch');
-  await app.markReferenceExported();await app.copyMapPrompt();
-  const generation=app.workflow.generation,reused=await app.generationRequest();
-  assert(generation.imageId===reused.imageId&&scene.getFlag('scene-architect','generation').imageId===generation.imageId&&clipboardText.includes(generation.imageId),'Copying and recopying the map prompt reuses one persisted generation identity');
-  app.element.querySelector('[name="mapFile"]').files=transfer.files;
-  await app.previewMap();await app.applyMap();
-  assert(uploads.length===4&&scene.getFlag('scene-architect','map').generationId===generation.imageId,'A selected map associates with same-chat geometry only after its generation prompt was copied');
-  const uploadedMap=await loadImage(scene.firstLevel.background.src);
-  assert(same(pixel(renderWholeMap(uploadedMap,scene),100,35),[255,0,0,255]),'Encoded uploaded PNG has no preview overlay');
-  const reopened=new SceneArchitectApp();reopened.workflow={...projectFromScene(scene),legacySeparateFit:true};await reopened.render();
-  assert(reopened.workflow.map.src.includes('-source.png'),'Reopen restores original full-map source');
-  assert(reopened.workflow.map.generationId===generation.imageId&&reopened.element.textContent.includes('registered vectors')&&reopened.element.textContent.includes('do not attach the image again'),'Applied map retains generation identity and offers registered same-chat geometry guidance');
-  assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copySourceAnalysisPrompt'&&reopened.element.querySelector('[data-action="exportAnalysisImage"]'),'Map-applied workflow recommends same-chat analysis while keeping the fitted-image fallback reachable');
-  assert(reopened.element.textContent.includes('Manual wall and door edits are supported'),'Native edits show an advisory without blocking the workflow');
-  const uploadCount=uploads.length;
-  await reopened.previewMap();await reopened.applyMap();
-  const reappliedMap=scene.getFlag('scene-architect','map');
-  assert(!reopened.element.querySelector('[name="mapScale"], [name="mapX"], [name="mapY"]')&&uploads.length===uploadCount+1&&reappliedMap.scale===1&&reappliedMap.x===0&&reappliedMap.y===0,'Reapply reuses the original source with an automatic full-scene fit and no manual alignment controls');
-  const background=scene.firstLevel.background.src;
-  foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyMap();
-  assert(scene.firstLevel.background.src===background&&uploads.length===uploadCount+1,'Cancelling application preserves the background and performs no upload');
-  foundry.applications.api.DialogV2.confirm=async()=>true;
-  const originalUpload=foundry.applications.apps.FilePicker.upload;
-  foundry.applications.apps.FilePicker.upload=async()=>({error:'simulated upload failure'});
-  let failed=false;try{await reopened.applyMap();}catch(e){failed=e.message.includes('simulated upload failure');}
-  assert(failed&&scene.firstLevel.background.src===background,'Upload failure leaves the existing background intact');
-  foundry.applications.apps.FilePicker.upload=originalUpload;
-  const sourceRequest=await reopened.analysisRequest('source');
-  assert(sourceRequest.imageId===generation.imageId&&sourceRequest.width===200&&sourceRequest.height===100&&sourceRequest.sceneWidth===1960&&sourceRequest.registration.segments.length===scene.walls.length&&sourceRequest.wallSignature,'Same-chat analysis persists source dimensions, live vector registration and a freshness signature');
-  const sourceIds=[...sourceRequest.registration.segments,...sourceRequest.registration.openings].map(s=>s.id);
-  const sourceSeg=(id,a,b,kind='wall',sourceIds=[],change='added')=>({id,a,b,kind,evidence:'visible',reviewRequired:false,note:'',sourceIds,change});
-  const sourceProposal={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[sourceSeg('source-wall',[.1,.2],[.4,.2],'wall',[sourceIds[0]],'moved')],openings:[],removedSourceIds:sourceIds.slice(1),reviewNotes:[]};
-  reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(sourceProposal);await reopened.importGeometry();
-  const transformed=scene.getFlag('scene-architect','geometryProposal');
-  assert(transformed.origin.version===2&&transformed.walls[0].sourceIds[0]===sourceIds[0]&&transformed.walls[0].a[0]===.1&&!!reopened.element.querySelector('.sa-geometry-preview canvas'),'Same-chat source geometry preserves vector correspondence through the automatic full-scene fit');
-  assert(reopened.element.querySelector('.sa-primary').dataset.action==='applyGeometry','Previewed geometry advances the primary action to apply');
-  await scene.setFlag('scene-architect','geometryProposal',null);await reopened.render();
-  const request=await reopened.analysisRequest();
-  assert(request.width===1960&&request.height===1680&&request.imageId,'Analysis request is tied to the currently fitted background and scene dimensions');
-  // Inspect the actual export blob without starting an OS download in headless Edge.
-  HTMLAnchorElement.prototype.click=function(){};
-  URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
-  await reopened.exportAnalysisImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
-  const exportUrl=URL.createObjectURL(exportedBlob),exportedImage=await loadImage(exportUrl);
-  const prior=request.registration.segments[0],priorX=Math.round((prior.a[0]+prior.b[0])*exportedImage.width/2),priorY=Math.round((prior.a[1]+prior.b[1])*exportedImage.height/2);
-  const exportedCanvas=renderWholeMap(exportedImage,scene,{},false),cleanAnalysis=renderWholeMap(await loadImage(scene.firstLevel.background.src),scene,{},false);
-  assert(exportedImage.width===1960&&!same(pixel(exportedCanvas,priorX,priorY),pixel(cleanAnalysis,priorX,priorY)),'Fitted analysis export overlays labelled registered vectors on otherwise unchanged artwork');URL.revokeObjectURL(exportUrl);
-  const seg=(id,a,b,kind='wall',reviewRequired=false,sourceIds=[],change='added')=>({id,a,b,kind,evidence:'visible',reviewRequired,note:reviewRequired?'Check this opening':'',sourceIds,change});
-  const fittedIds=[...request.registration.segments,...request.registration.openings].map(s=>s.id);
-  const proposal={version:1,coordinateSpace:'normalized-image',boundaryConvention:'wall-centre',source:{imageId:request.imageId,width:1960,height:1680},walls:[seg('wall1',[.1,.2],[.4,.2],'wall',false,[fittedIds[0]],'moved'),seg('door1',[.4,.2],[.5,.2],'door'),seg('wall2',[.5,.2],[.9,.2])],openings:[seg('gap',[.1,.5],[.2,.5],'open',true)],removedSourceIds:fittedIds.slice(2),reviewNotes:['Confirm the passage.']};
-  const invalidGeometry=structuredClone(proposal);invalidGeometry.openings[0].id='opening-corridor-salon';invalidGeometry.openings[0].kind='door';
-  const rejectedGeometryJson=JSON.stringify(invalidGeometry,null,2);
-  reopened.element.querySelector('[name="geometryJson"]').value=rejectedGeometryJson;await reopened.run('importGeometry');
-  assert(reopened.geometryRepair?.json===rejectedGeometryJson&&reopened.geometryRepair.error==='opening-corridor-salon: invalid segment kind.'&&reopened.element.textContent.includes('Geometry not accepted'),'Invalid final geometry retains the rejected JSON and exact validator error in persistent correction guidance');
-  assert(reopened.element.querySelectorAll('.sa-primary').length===1&&reopened.element.querySelector('.sa-primary').dataset.action==='copyGeometryRepairPrompt','Geometry validation failure makes the correction request the one primary action');
-  await reopened.run('copyGeometryRepairPrompt');
-  assert(clipboardText.includes('"validatorError": "opening-corridor-salon: invalid segment kind."')&&clipboardText.includes('"rejectedGeometryText"')&&clipboardText.includes('REGISTERED PRIOR')&&clipboardText.includes('untrusted data')&&reopened.element.querySelector('.sa-primary').dataset.action==='importGeometry','Geometry correction request includes the original contract and bounded rejection evidence, then advances to corrected import');
-  const originalWalls=JSON.stringify(scene.walls),preserved=JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background]);
-  const promptWallX=scene.walls[0].c[0];scene.walls[0].c[0]++;reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify(proposal);
-  let staleRequest=false;try{await reopened.importGeometry();}catch(e){staleRequest=e.message.includes('current walls changed');}
-  scene.walls[0].c[0]=promptWallX;
-  assert(staleRequest,'Wall edits after copying the prompt invalidate registered geometry before import');
-  reopened.element.querySelector('[name="geometryJson"]').value=JSON.stringify({...proposal,source:{...proposal.source,imageId:'wrong-image'}});
-  let rejected=false;try{await reopened.importGeometry();}catch(e){rejected=e.message.includes('different analysis image');}
-  assert(rejected&&JSON.stringify(scene.walls)===originalWalls,'JSON from a different analysis image is rejected without wall changes');
-  const jsonTransfer=new DataTransfer();jsonTransfer.items.add(new File([JSON.stringify(proposal)],'geometry.json',{type:'application/json'}));
-  reopened.element.querySelector('[name="geometryFile"]').files=jsonTransfer.files;
-  await reopened.importGeometry();
-  assert(!reopened.geometryRepair&&JSON.stringify(scene.walls)===originalWalls&&scene.getFlag('scene-architect','geometryProposal').registrationReviewRequired&&reopened.element.textContent.includes('treated as removed for this preview'),'Corrected file import clears repair state, tolerates missing source accounting and leaves walls unchanged');
-  assert(same(pixel(reopened.element.querySelector('.sa-geometry-preview canvas'),200,336),[72,245,208,255]),'Geometry preview draws imported normalized coordinates over the fitted image');
-  assert(reopened.element.querySelector('.sa-primary').dataset.action==='applyGeometry'&&reopened.element.querySelector('[data-next-action-text]').textContent.includes('apply the proposed geometry'),'Geometry preview keeps the primary button and textual next action in agreement');
-  let needsReview=false;try{await reopened.applyGeometry();}catch(e){needsReview=e.message.includes('Review the orange');}
-  assert(needsReview&&JSON.stringify(scene.walls)===originalWalls,'Flagged openings require review acknowledgement before replacement');
-  reopened.element.querySelector('[name="geometryReviewed"]').checked=true;
-  foundry.applications.api.DialogV2.confirm=async()=>false;await reopened.applyGeometry();
-  assert(JSON.stringify(scene.walls)===originalWalls,'Cancelling geometry replacement leaves native documents untouched');
-  foundry.applications.api.DialogV2.confirm=async()=>true;
-  const wallX=scene.walls[0].c[0];scene.walls[0].c[0]++;
-  let stale=false;try{await reopened.applyGeometry();}catch(e){stale=e.message.includes('Preview the proposed geometry')||e.message.includes('current walls changed');}
-  assert(stale,'Manual wall edits invalidate the copied geometry request and earlier preview');
-  scene.walls[0].c[0]=wallX;
-  const beforeReplacement=structuredClone(scene.walls);
-  await reopened.previewGeometry();await reopened.applyGeometry();
-  assert(scene.walls.length===3&&scene.walls[1].door===1&&!scene.walls.some(w=>w.flags?.['scene-architect']?.analysisSegment==='gap'),'Apply creates native wall/door documents and leaves open passages unblocked');
-  assert(JSON.stringify([scene.lights,scene.tiles,scene.firstLevel.background])===preserved,'Geometry replacement preserves lights, the image and existing Tiles');
-  const geometryApp=new SceneArchitectApp();geometryApp.workflow={...projectFromScene(scene),legacySeparateFit:true};await geometryApp.render();
-  assert(geometryApp.element.textContent.includes('Restore previous walls')&&geometryApp.element.querySelector('[name="geometryJson"]').value.includes('wall1'),'Reopening restores the geometry proposal and wall-backup action');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt'&&geometryApp.element.querySelectorAll('[aria-current="step"]').length===1&&geometryApp.element.querySelector('.sa-progress-item[data-step="4"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='5'&&geometryApp.element.querySelector('.sa-step[data-step="5"] details').open,'Applied geometry marks its step complete and opens same-chat lighting as the one primary action');
-  await geometryApp.restoreGeometry();
-  const stripId=wall=>{const c=structuredClone(wall);delete c.id;delete c._id;if(c.flags?.['scene-architect'])delete c.flags['scene-architect'].geometryBatch;return c;};
-  assert(same(scene.walls.map(stripId),beforeReplacement.map(stripId)),'Restore action restores the previous wall coordinates, types and document settings');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copySourceLightingPrompt','Restored geometry still keeps independent finished-map lighting as the one primary next action');
-  const fittedLightRequest=await geometryApp.lightingRequest('fitted');
-  assert(fittedLightRequest.width===scene.width&&fittedLightRequest.height===scene.height&&fittedLightRequest.registration.managedLights.length===2,'Fitted lighting request uses the applied scene frame and current managed-light prior');
-  exportedBlob=undefined;HTMLAnchorElement.prototype.click=function(){};URL.createObjectURL=blob=>{exportedBlob=blob;return createURL.call(URL,blob);};
-  await geometryApp.exportLightingImage();URL.createObjectURL=createURL;HTMLAnchorElement.prototype.click=anchorClick;
-  const lightExportUrl=URL.createObjectURL(exportedBlob),lightExport=await loadImage(lightExportUrl),registeredLight=fittedLightRequest.registration.managedLights[0];
-  const lightExportCanvas=renderWholeMap(lightExport,scene,{},false),cleanLightImage=renderWholeMap(await loadImage(scene.firstLevel.background.src),scene,{},false);
-  assert(!same(pixel(lightExportCanvas,Math.round(registeredLight.center[0]*scene.width),Math.round(registeredLight.center[1]*scene.height)),pixel(cleanLightImage,Math.round(registeredLight.center[0]*scene.width),Math.round(registeredLight.center[1]*scene.height))),'Fitted lighting export overlays labelled managed and protected light context on unchanged artwork');URL.revokeObjectURL(lightExportUrl);
-  const lightRequest=await geometryApp.lightingRequest('source');
-  assert(lightRequest.registration.managedLights.length===2&&lightRequest.registration.protectedLights.length===1&&lightRequest.imageId===generation.imageId,'Same-chat lighting request registers managed lights and immutable protected context against the original generation');
-  await geometryApp.copySourceLightingPrompt();
-  assert(clipboardText.includes('tangible visible light emitters')&&clipboardText.includes('Do not ask me to attach')&&clipboardText.includes('Protected IDs are context only')&&clipboardText.includes('cannot disprove a temporal effect'),'Same-chat lighting prompt reuses the generated image and preserves semantic effects plus protected context');
-  const portalSource=lightRequest.registration.managedLights.find(light=>light.preset==='magic-portal').id,lampSource=lightRequest.registration.managedLights.find(light=>light.preset==='flickering-lamp').id;
-  const lightProposal={version:2,coordinateSpace:'normalized-source-image',requestId:lightRequest.requestId,source:{imageId:generation.imageId,width:200,height:100},lights:[
-    {id:'portal-fit',name:'Portal fit',center:[.3,.3],preset:'magic-portal',spread:'large',color:'#954aff',evidence:'visible',reviewRequired:false,note:'Visible portal aperture',sourceIds:[portalSource],change:'moved'},
-    {id:'lamp-added',name:'Painted wall lamp',center:[.7,.6],preset:'flickering-lamp',spread:'small',color:'#ffb45b',evidence:'visible',reviewRequired:false,note:'Visible wall fixture',sourceIds:[],change:'added'}
-  ],removedSourceIds:[lampSource],reviewNotes:[]};
-  const invalidLighting=structuredClone(lightProposal);invalidLighting.lights[1].preset='unknown-effect';
-  const rejectedLightingJson=JSON.stringify(invalidLighting,null,2);
-  geometryApp.element.querySelector('[name="lightingJson"]').value=rejectedLightingJson;await geometryApp.run('importLighting');
-  assert(geometryApp.lightRepair?.json===rejectedLightingJson&&geometryApp.lightRepair.error==='lamp-added: preset is invalid.'&&geometryApp.element.textContent.includes('Lighting not accepted'),'Invalid lighting retains rejected JSON and exact validator error without changing geometry or native lights');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='copyLightRepairPrompt','Lighting validation failure makes its correction request the one primary action');
-  await geometryApp.run('copyLightRepairPrompt');
-  assert(clipboardText.includes('"validatorError": "lamp-added: preset is invalid."')&&clipboardText.includes('"rejectedLightingText"')&&clipboardText.includes('REGISTERED LIGHT PRIOR')&&clipboardText.includes('untrusted data'),'Lighting correction request includes the original registered contract and bounded rejection evidence');
-  const lightStateBefore=JSON.stringify([scene.lights,scene.walls,scene.tiles,scene.firstLevel.background]);
-  scene.lights.find(light=>light.id==='protected-light').x++;
-  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(lightProposal);
-  let staleProtected=false;try{await geometryApp.importLighting();}catch(e){staleProtected=e.message.includes('Native lights changed');}
-  scene.lights.find(light=>light.id==='protected-light').x--;
-  assert(staleProtected&&JSON.stringify([scene.walls,scene.tiles,scene.firstLevel.background])===JSON.stringify(JSON.parse(lightStateBefore).slice(1)),'Protected-light edits invalidate a copied request without changing geometry or non-light documents');
-  await geometryApp.copySourceLightingPrompt();
-  const freshLightRequest=scene.getFlag('scene-architect','lightingRequest');
-  const correctedLighting={...lightProposal,requestId:freshLightRequest.requestId};
-  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(correctedLighting);await geometryApp.importLighting();
-  assert(!geometryApp.lightRepair&&!!geometryApp.element.querySelector('.sa-lighting-preview canvas')&&geometryApp.element.textContent.includes('Portal fit — magic-portal, large'),'Corrected lighting clears repair state and renders labelled visual plus textual review');
-  assert(geometryApp.element.querySelector('.sa-primary').dataset.action==='applyLighting'&&geometryApp.element.querySelector('[data-next-action-text]').textContent.includes('apply the managed-light proposal'),'Lighting preview keeps the primary action and textual guidance in agreement');
-  const protectedBefore=structuredClone(scene.lights.find(light=>light.id==='protected-light')),wallsBeforeLights=JSON.stringify(scene.walls);
-  foundry.applications.api.DialogV2.confirm=async()=>false;await geometryApp.applyLighting();
-  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2,'Cancelling managed-light replacement leaves current lights unchanged');
-  foundry.applications.api.DialogV2.confirm=async()=>true;
-  scene.lights.find(light=>light.id==='protected-light').config.dim++;
-  let staleLightPreview=false;try{await geometryApp.applyLighting();}catch(e){staleLightPreview=e.message.includes('Native lights changed')||e.message.includes('protected context');}
-  scene.lights.find(light=>light.id==='protected-light').config.dim--;
-  assert(staleLightPreview,'Protected-light configuration changes invalidate an earlier lighting preview');
-  await geometryApp.copySourceLightingPrompt();
-  const finalLightRequest=scene.getFlag('scene-architect','lightingRequest');
-  const finalLighting={...lightProposal,requestId:finalLightRequest.requestId};
-  geometryApp.element.querySelector('[name="lightingJson"]').value=JSON.stringify(finalLighting);await geometryApp.importLighting();await geometryApp.applyLighting();
-  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===2&&same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore),'Applying lighting replaces only Scene Architect-managed lights and preserves the protected document');
-  assert(JSON.stringify(scene.walls)===wallsBeforeLights&&scene.getFlag('scene-architect','lightingBackup').lights.length===2,'Applying lighting preserves walls and saves a durable managed-light backup');
-  assert(geometryApp.element.querySelectorAll('.sa-primary').length===1&&geometryApp.element.querySelector('.sa-primary').dataset.action==='viewScene'&&geometryApp.element.querySelector('.sa-progress-item[data-step="5"]').classList.contains('is-complete'),'Legacy domain checks still reach the live Foundry testing action');
-  const appliedManaged=structuredClone(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated));
-  await geometryApp.restoreLighting();
-  assert(scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).some(light=>light.flags['scene-architect'].sourceId==='plan-light-1-portal')&&scene.getFlag('scene-architect','lightingBackup').lights.length===appliedManaged.length,'Restore returns the previous managed-light set and keeps one-level undo');
-  assert(same(scene.lights.find(light=>light.id==='protected-light'),protectedBefore)&&JSON.stringify(scene.walls)===wallsBeforeLights,'Light restoration preserves protected lights and accepted geometry');
-  scene.firstLevel.background.src='changed.png';
-  let changedImage=false;try{await geometryApp.previewGeometry();}catch(e){changedImage=e.message.includes('analysis image has changed');}
-  assert(changedImage,'Changing the background invalidates the stored geometry analysis');
-  scene.firstLevel.background.src=background;
-  let createdDrafts=0;
-  globalThis.Scene={implementation:{async create(data){
-    createdDrafts++;
-    const draft={...scene,...structuredClone(data),id:'new-draft',walls:[],lights:[],tiles:[],firstLevel:{background:{src:''},async update(change){this.background.src=change['background.src'];}},
-      async view(){},async createEmbeddedDocuments(type,items){const docs=items.map((x,i)=>({...x,id:type+'-'+i}));this[type==='Wall'?'walls':type==='AmbientLight'?'lights':'tiles'].push(...docs);return docs;}};
-    scenes.set(draft.id,draft);return draft;
+  class NativeDocument {constructor(data){this.data=data;}validate(){if(faults.validation)throw new Error('Injected native validation failure');return true;}}
+  globalThis.CONFIG={Canvas:{lightAnimations:{flicker:{},torch:{},rainbowswirl:{},pulse:{}}},Wall:{documentClass:NativeDocument},AmbientLight:{documentClass:NativeDocument}};
+  globalThis.Scene={implementation:{create:async data=>{
+    if(faults.create){faults.create=false;throw new Error('Injected scene creation failure');}
+    const scene={...structuredClone(data),id:crypto.randomUUID(),walls:[],lights:[],tiles:[],flags:structuredClone(data.flags),view:async()=>{},
+      getFlag(scope,key){return this.flags[scope]?.[key];},
+      async update(patch){if(faults.flags){faults.flags=false;throw new Error('Injected flag save failure');}applyDocumentUpdate(this,patch);mutations.push('flags');},
+      async delete(){if(faults.cleanup){faults.cleanup=false;throw new Error('Injected cleanup failure');}scenes.delete(this.id);mutations.push('delete-scene');},
+      async createEmbeddedDocuments(type,items){
+        mutations.push(type);
+        if(faults.native===type){delete faults.native;throw new Error('Injected native creation failure');}
+        const documents=items.map(item=>({...structuredClone(item),id:crypto.randomUUID()}));
+        if(faults.short===type){delete faults.short;documents.pop();}
+        this[type==='Wall'?'walls':'lights'].push(...documents);return documents;
+      }};
+    scene.firstLevel={background:{src:''},async update(patch){
+      if(faults.backgrounds?.shift())throw new Error('Injected background restoration failure');
+      if(faults.background){faults.background=false;throw new Error('Injected background failure');}
+      this.background.src=patch['background.src'];mutations.push('background');
+      if(faults.afterBackground){const callback=faults.afterBackground;delete faults.afterBackground;callback();}
+    }};
+    scenes.set(scene.id,scene);mutations.push('create-scene');return scene;
   }}};
-  const invalid=structuredClone(fixture);invalid.lights=[{name:'Broken effect',preset:'magic-portal',sourceFeatureId:'instantiator',animation:{type:'missing-effect',speed:3,intensity:3,reverse:false}}];
-  const rejectedDraft=new SceneArchitectApp();rejectedDraft.usePlan(invalid);
-  let rejectedLight=false;try{await rejectedDraft.buildDraft();}catch(e){rejectedLight=e.message.includes('not available');}
-  assert(rejectedLight&&createdDrafts===0,'Unavailable light effects fail before creating a scene or embedded documents');
-  const semantic=structuredClone(fixture);semantic.lights=[
-    {name:'Instantiator portal',preset:'magic-portal',sourceFeatureId:'instantiator',animation:{type:'rainbowswirl',speed:6,intensity:8,reverse:true}},
-    {name:'Engine flicker',preset:'flickering-lamp',sourceFeatureId:'engine'},
-    {name:'Medical lamp',preset:'steady-lamp',sourceFeatureId:'medical-1'},
-    {name:'Legacy light',x:6,y:7,dim:4,bright:1}
-  ];
-  const installedAnimations=CONFIG.Canvas.lightAnimations;
-  CONFIG.Canvas.lightAnimations={rainbowswirl:{}};
-  const fresh=new SceneArchitectApp();fresh.usePlan(semantic);await fresh.buildDraft();
-  CONFIG.Canvas.lightAnimations=installedAnimations;
-  assert(fresh.scene.walls.filter(w=>w.door===1).length===2&&fresh.scene.walls.filter(w=>w.door===2).length===1,'Draft action creates native wide doors and secret door (mock Foundry)');
-  assert(fresh.scene.lights.length===4&&fresh.scene.firstLevel.background.src.endsWith('guide.png'),'Draft action creates semantic and legacy native lights plus a geometry guide (mock Foundry)');
-  assert(fresh.scene.lights[0].config.animation.type==='rainbowswirl'&&fresh.scene.lights[0].config.animation.speed===6&&fresh.scene.lights[0].x===14*70,'Semantic light mapping preserves runtime-validated effects, parameters and feature-centred placement');
-  assert(fresh.scene.lights[1].config.animation.type===''&&fresh.scene.lights[2].config.animation.type===''&&fresh.scene.lights[3].config.animation.type==='','Unavailable semantic preset animations fall back to steady while steady and legacy lights remain valid');
-  fresh.workflow.map={src:fresh.scene.firstLevel.background.src,scale:1,x:0,y:0,width:fresh.scene.width,height:fresh.scene.height,generationId:null};
-  const lockedRequest=await fresh.analysisRequest('fitted');
-  assert(lockedRequest.gridLocked&&lockedRequest.gridSize===70,'Unmodified deterministic draft geometry enables 70px grid locking');
-  fresh.scene.walls[0].c[0]++;
-  const freeFitRequest=await fresh.analysisRequest('fitted');
-  assert(!freeFitRequest.gridLocked,'A manual off-grid wall edit keeps the free-fit geometry path');
-  geometryApp.workflow.legacySeparateFit=false;
-  await scene.setFlag('scene-architect','geometryProposal',null);await scene.setFlag('scene-architect','lightingProposal',null);
-  await geometryApp.render();await geometryApp.copySceneFitPrompt();
-  const fitGeometryRequest=scene.getFlag('scene-architect','geometryRequest'),fitLightingRequest=scene.getFlag('scene-architect','lightingRequest');
-  const fitGeometryIds=[...fitGeometryRequest.registration.segments,...fitGeometryRequest.registration.openings].map(item=>item.id);
-  const fitManagedIds=fitLightingRequest.registration.managedLights.map(item=>item.id);
-  const fitGeometry={version:2,coordinateSpace:'normalized-source-image',boundaryConvention:'wall-centre',source:{imageId:generation.imageId,width:200,height:100},walls:[{id:'combined-wall',a:[.1,.2],b:[.9,.2],kind:'wall',evidence:'visible',reviewRequired:false,note:'',sourceIds:[],change:'added'}],openings:[],removedSourceIds:fitGeometryIds,reviewNotes:[]};
-  const fitLighting={version:2,coordinateSpace:'normalized-source-image',requestId:fitLightingRequest.requestId,source:{imageId:generation.imageId,width:200,height:100},lights:[{id:'combined-lamp',name:'Combined lamp',center:[.5,.5],preset:'steady-lamp',spread:'medium',color:'#ffd6a0',evidence:'visible',reviewRequired:false,note:'',sourceIds:[],change:'added'}],removedSourceIds:fitManagedIds,reviewNotes:[]};
-  const invalidFitLighting=structuredClone(fitLighting);invalidFitLighting.lights[0].preset='not-installed';
-  geometryApp.element.querySelector('[name="sceneFitJson"]').value=JSON.stringify({kind:'scene-fit',version:1,geometry:fitGeometry,lighting:invalidFitLighting});
-  await geometryApp.run('importSceneFit');
-  assert(geometryApp.sceneFitRepair?.error==='Lighting: combined-lamp: preset is invalid.'&&!scene.getFlag('scene-architect','geometryProposal')&&!scene.getFlag('scene-architect','lightingProposal'),`Combined import rejects both proposals atomically and retains the domain-specific error (${geometryApp.sceneFitRepair?.error})`);
-  geometryApp.element.querySelector('[name="sceneFitJson"]').value=JSON.stringify({kind:'scene-fit',version:1,geometry:fitGeometry,lighting:fitLighting});
-  await geometryApp.importSceneFit();
-  assert(!!geometryApp.element.querySelector('.sa-scene-fit-preview canvas')&&geometryApp.element.querySelector('.sa-primary').dataset.action==='applySceneFit','Valid combined JSON advances through one wall-and-light preview to one apply action');
-  foundry.applications.api.DialogV2.confirm=async()=>true;await geometryApp.applySceneFit();
-  assert(scene.walls.length===1&&scene.lights.filter(light=>light.flags?.['scene-architect']?.generated).length===1&&scene.lights.some(light=>light.id==='protected-light'),'Combined apply replaces walls and managed lights while preserving protected lights');
-  assert(scene.getFlag('scene-architect','sceneFit').frame===analysisFrame(scene)&&geometryApp.element.querySelectorAll('.sa-progress-item').length===5&&geometryApp.element.querySelector('.sa-progress-item[data-step="4"]').classList.contains('is-complete')&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='5','A frame-bound fit completes the required stage and opens stage 5 testing');
-  const fittedFrame=scene.getFlag('scene-architect','sceneFit').frame;
-  geometryApp.element.querySelector('[name="mapFile"]').files=transfer.files;
-  await geometryApp.previewMap();await geometryApp.applyMap();
-  assert(scene.getFlag('scene-architect','sceneFit').frame===fittedFrame&&analysisFrame(scene)!==fittedFrame&&geometryApp.element.querySelector('[aria-current="step"]').dataset.step==='4'&&geometryApp.element.querySelector('.sa-primary').dataset.action==='exportSceneFitImage','Applying a replacement map invalidates frame-bound completion and requires scene fitting again before Test');
-  assert(!!fresh.scene.getFlag('scene-architect','revision')&&!geometryApp.element.textContent.includes('optional'),'New drafts persist and the normal journey exposes no optional fit branch');
-  document.querySelector('#results').textContent=`PASS — ${results.length} browser assertions\n${results.join('\n')}`;
-  document.querySelector('#results').hidden=true;document.querySelector('#assembly').hidden=true;
-  document.querySelector('#assembly').style.display='none';
-  const fitSection=document.querySelector('[name="sceneFitJson"]').closest('.sa-section'),hero=document.querySelector('.sa-hero');
-  for(const section of document.querySelectorAll('.sa-section'))if(section!==hero&&section!==fitSection)section.style.display='none';
-  window.scrollTo(0,0);
-  await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({passed:results.length,results},null,2)});
-  document.title='PASS — Scene Architect';
+  const {SceneArchitectApp,buildLayoutPrompt,buildSceneIntentPrompt}=await import('../scripts/scene-architect.js');
+  const file=synthetics.get('laboratory'),plan=plans.get('laboratory');
+  const fresh=async()=>{settings.set('localDraft','');const app=new SceneArchitectApp();app.usePlan(plan);await app.render();return app;};
+  const select=async(app,file)=>{
+    const transfer=new DataTransfer();if(file)transfer.items.add(file);
+    const input=app.element.querySelector('[name="mapFile"]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));await app.localSave;
+  };
+  const review=app=>{const checkbox=app.element.querySelector('[name="artworkReviewed"]');checkbox.checked=true;checkbox.dispatchEvent(new Event('change',{bubbles:true}));};
+  const ready=async()=>{const app=await fresh();await app.buildPlan();await select(app,file);await app.previewArtwork();review(app);return app;};
+  const beforeNative=()=>JSON.stringify([...scenes.values()].map(s=>[s.id,s.walls,s.lights,s.tiles]));
+  const app=await fresh();
+  assert(app.element.querySelectorAll('[aria-current="step"]').length===1,'Exactly one progress step is current');
+  assert(app.element.querySelector('.sa-primary').dataset.action==='buildPlan','Imported design leads to local Build');
+  assert(!Object.keys(SceneArchitectApp.DEFAULT_OPTIONS.actions).some(name=>/fit|Geometry|Lighting|Draft/i.test(name)),'Primary application contains no fitting, geometry replacement or draft creation actions');
+  assert(buildLayoutPrompt(app.workflow,['flicker']).includes('sourceFeatureId')&&buildSceneIntentPrompt(app.workflow).includes('scene-intent'),'Legacy and semantic prompt exports remain available');
+  await app.buildPlan();
+  assert(scenes.size===0&&uploads.length===0,'Build creates no native scene and uploads nothing');
+  assert(app.element.querySelector('.sa-plan-preview canvas')&&app.element.querySelector('.sa-primary').dataset.action==='handoff','Build displays a clean local preview and advances to handoff');
+  const savedBuild=JSON.parse(settings.get('localDraft'));
+  assert(savedBuild.version===1&&savedBuild.workflow.plan.spaces.length===plan.spaces.length,'Validated local geometry is durably saved before handoff');
+  settings.set('localDraft',JSON.stringify({version:1,workflow:{...savedBuild.workflow,built:'untrusted'}}));
+  const invalidDraft=new SceneArchitectApp();
+  assert(!invalidDraft.plan&&invalidDraft.status.includes('Invalid local build'),'Malformed serialized workflow is rejected instead of restoring unvalidated state');
+  await app.persistLocal();
+  await app.handoff();
+  assert(downloads.at(-1).name.endsWith('-reference.png')&&clipboardText.includes('appearance-layer')&&app.element.querySelector('[data-handoff-text] textarea'),'One handoff action downloads reference, copies provider-independent prompt and shows prompt text');
+  navigator.clipboard.writeText=async()=>{throw new Error('Clipboard denied for test');};await app.handoff();
+  assert(!app.workflow.generation.copied&&app.element.textContent.includes('Clipboard unavailable'),'Clipboard failure has a visible manual-copy and downloadable prompt fallback');
+  await app.downloadPrompt();assert(downloads.at(-1).name.endsWith('-artwork-prompt.txt'),'Handoff prompt is downloadable');
+  navigator.clipboard.writeText=async text=>{clipboardText=text;};
+  await select(app,file);await app.render();
+  assert(app.selectedFile===file&&app.element.textContent.includes(file.name),'Local file selection survives redraw even though native file input resets');
+  const before=beforeNative();await app.previewArtwork();
+  assert(beforeNative()===before&&scenes.size===0,'Import and preview cannot mutate native geometry or create a scene');
+  await rejects(()=>app.createScene(),/Inspect/, 'Creation requires explicit visual inspection');
+  review(app);confirm=false;await app.createScene();confirm=true;
+  assert(scenes.size===0&&uploads.length===0,'Cancelled confirmation creates no scene and uploads nothing');
+  const expectedBytes=Array.from(new Uint8Array(await app.preview.blob.arrayBuffer()));review(app);await app.createScene();
+  const scene=app.scene;
+  assert(scene&&scene.walls.length===compileGeometry(plan).length&&scene.lights.length===plan.lights.length,'Create Scene verifies native wall/light counts');
+  assert(same(expectedBytes,Array.from(new Uint8Array(await uploads.at(-1).arrayBuffer()))),'Created background is byte-exact preview PNG, not a second render');
+  assert(scene.grid.alpha===0&&scene.firstLevel.background.src===app.workflow.map.composite,'Scene uses composite background and no baked/native grid overlay by default');
+  assert(app.workflow.map.architectureVersion===1&&app.workflow.map.mapping.x===0&&app.workflow.map.sourceWidth===2800,'Saved map retains original dimensions, identity mapping and architecture version');
+  const originalSource=app.workflow.map.src,sourceUploads=uploads.filter(f=>f.name.includes('-source.')).length;
+  const door=scene.walls.find(w=>w.door);if(door)door.ds=2;
+  const nativeSnapshot=beforeNative();await app.previewArtwork();review(app);await app.updateScene();
+  assert(app.workflow.map.src===originalSource&&uploads.filter(f=>f.name.includes('-source.')).length===sourceUploads,'Recomposition reuses durable original source, never the composite or a resampled copy');
+  assert(beforeNative()===nativeSnapshot&&(!door||door.ds===2),'Background update preserves native light positions and door states without embedded-document replacement');
+
+  // Ratio rejection and all stale-input gates happen before upload/document mutation.
+  const ratio=await fresh();await ratio.buildPlan();
+  const square=new File([await canvasBlob(makeCanvas(100,100))],'wrong-ratio.png',{type:'image/png'});
+  await select(ratio,square);const ratioCounts=[uploads.length,scenes.size];
+  await rejects(()=>ratio.previewArtwork(),/aspect ratio/, 'Incompatible source ratio is rejected without crop or stretch');
+  assert(same(ratioCounts,[uploads.length,scenes.size]),'Ratio failure makes no uploads or scene');
+  await select(ratio,new File([await canvasBlob(makeCanvas(3,2))],'tiny-incompatible.png',{type:'image/png'}));
+  await rejects(()=>ratio.previewArtwork(),/aspect ratio/, 'Relative aspect cap rejects tiny incompatible sources despite one-pixel rounding tolerance');
+  const stale=await ready();await select(stale,new File([file],'unseen.png',{type:'image/png'}));
+  await rejects(()=>stale.createScene(),/Preview/, 'Changing the file invalidates the pending preview');
+  await stale.previewArtwork();review(stale);
+  const width=stale.element.querySelector('[name="wallWidth"]');width.value='.25';width.dispatchEvent(new Event('input',{bubbles:true}));
+  assert(!stale.preview&&!stale.workflow.generation,'Editing rendering settings invalidates preview and handoff immediately');
+  await rejects(()=>stale.createScene(),/Apply/, 'Unapplied settings cannot create unseen artwork');
+  await stale.applyRendering();assert(stale.plan.rendering.wallWidth===.25,'Advanced settings update appearance without changing geometry');
+  await stale.previewArtwork();await stale.cancelPreview();
+  assert(!stale.preview&&stale.selectedFile,'Cancel preview retains selected source for another inspection');
+  const pending=await ready();await pending.close();
+  const restored=new SceneArchitectApp();await restored.render();
+  assert(restored.plan&&!restored.preview&&!restored.selectedFile&&restored.status.includes('reselect'),'Closing and reopening restores geometry, not unsaved images or preview approval');
+  assert(!/blob:|data:image/.test(settings.get('localDraft')),'Local settings never contain image data or object URLs');
+  const imported=await ready(),oldPlan=imported.plan,oldPreview=imported.preview;
+  dialogValue={json:JSON.stringify(fixture)};await rejects(()=>imported.pastePlan(),/scene-intent/, 'Semantic import rejects low-level JSON');
+  assert(imported.plan===oldPlan&&imported.preview===oldPreview&&!imported.workflow.planRepair,'Semantic rejection is atomic, preserving valid plan and pending preview');
+  dialogValue={json:'not JSON'};await rejects(()=>imported.pastePlan({dataset:{mode:'advanced'}}),/JSON/, 'Advanced invalid JSON enters bounded repair guidance');
+  assert(imported.plan===oldPlan&&imported.workflow.planRepair?.json==='not JSON','Advanced rejection preserves plan and retains rejected input for repair');
+  dialogValue={json:JSON.stringify(plan)};await imported.pastePlan({dataset:{mode:'advanced'}});
+  assert(!imported.preview&&!imported.selectedFile&&!imported.workflow.map,'Accepted usePlan clears pending images and scene linkage');
+  await imported.newProject();assert(!imported.plan&&!imported.selectedFile,'New project clears local pending state');
+  await imported.loadExample();assert(imported.plan.features.some(f=>f.placement==='centered'||f.facing)&&imported.workflow.columns===40,'Load example uses v2 semantic laboratory and 40 × 32 dimensions');
+
+  const reopen=async scene=>{
+    settings.set('localDraft','');const app=new SceneArchitectApp();await app.render();
+    app.element.querySelector('[name="projectId"]').value=scene.id;await app.reopen();return app;
+  };
+  const reopened=await reopen(scene);
+  assert(reopened.workflow.map.src===originalSource&&reopened.plan.rendering.version===1&&!reopened.preview&&!reopened.selectedFile,'Reopen retains original source/settings and clears pending images');
+  await reopened.previewArtwork();review(reopened);
+  scene.flags['scene-architect'].revision='external-revision';const beforeStale=uploads.length;
+  await rejects(()=>reopened.updateScene(),/another window/, 'Stale project revision rejects update before uploads');
+  assert(uploads.length===beforeStale,'Stale revision never uploads');
+  const concurrent=await reopen(scene);await concurrent.previewArtwork();review(concurrent);
+  const backgroundBefore=scene.firstLevel.background.src;
+  faults.afterUpload=()=>{scene.flags['scene-architect'].revision='revision-during-upload';};
+  await rejects(()=>concurrent.updateScene(),/another window/, 'Revision changed during upload refuses background write');
+  assert(scene.firstLevel.background.src===backgroundBefore,'Concurrent revision preserves prior background');
+  const modified=await reopen(scene);scene.walls[0].c[0]+=4;const oldGeometry=JSON.stringify(scene.walls);
+  await modified.previewArtwork();review(modified);
+  await rejects(()=>modified.updateScene(),/new scene/i,'Fitted/modified native geometry refuses artwork update');
+  await modified.createNewScene();
+  assert(modified.scene.id!==scene.id&&JSON.stringify(scene.walls)===oldGeometry&&scene.firstLevel.background.src===backgroundBefore,'Explicit Create NEW Scene preserves modified old scene and uses original plan');
+  const tileScene=modified.scene;tileScene.tiles.push({id:'legacy-prop',flags:{'scene-architect':{generated:true}}});
+  const legacy=await reopen(tileScene);await legacy.previewArtwork();review(legacy);
+  await rejects(()=>legacy.updateScene(),/Tiles/, 'Legacy generated Tiles block update without deleting user content');
+  await legacy.createNewScene();assert(tileScene.tiles.length===1,'Create NEW preserves old generated Tiles');
+  const legacyMap=legacy.scene.flags['scene-architect'].map;
+  delete legacyMap.architectureVersion;legacyMap.scale=2;legacyMap.x=180;legacyMap.y=-60;
+  const oldSource=await reopen(legacy.scene);await oldSource.previewArtwork();
+  assert(oldSource.preview.mapping.x===0&&oldSource.preview.mapping.y===0&&oldSource.preview.mapping.scaleX===1,'Legacy source import ignores all old stretch and offset metadata');
+  const light=oldSource.scene.lights[0],lightX=light.x;light.x+=10;review(oldSource);
+  await rejects(()=>oldSource.updateScene(),/light positions/, 'Modified managed light positions refuse update; artwork cannot redefine native lighting');
+  light.x=lightX;
+  oldSource.scene.firstLevel.textures={offsetX:20};await oldSource.render();review(oldSource);
+  await rejects(()=>oldSource.updateScene(),/transform/, 'Legacy background offset refuses update rather than silently reusing a transform');
+  delete oldSource.scene.firstLevel.textures;
+
+  for(const failure of ['validation','upload','create','native','short','background','flags']) {
+    const failing=await ready(),count=scenes.size,uploadCount=uploads.length;
+    faults[failure]=failure==='native'?'AmbientLight':failure==='short'?'Wall':true;
+    await rejects(()=>failing.createScene(),/Injected|every native/,`${failure} failure does not report completion`);
+    delete faults[failure];
+    assert(scenes.size===count&&!failing.scene,`${failure} failure leaves no partially linked or orphaned new scene`);
+    if(failure==='validation')assert(uploads.length===uploadCount,'Runtime native validation occurs before first upload or document mutation');
+  }
+  const compositeFailure=await ready(),beforeComposite=scenes.size;
+  faults.afterUpload=()=>{faults.upload=true;};
+  await rejects(()=>compositeFailure.createScene(),/upload failure/, 'Composite upload failure after original upload creates no scene');
+  assert(scenes.size===beforeComposite,'Failed second upload leaves only an unreferenced uploaded source, never a partial scene');
+  const shortLights=await ready(),beforeShort=scenes.size;faults.short='AmbientLight';
+  await rejects(()=>shortLights.createScene(),/every native light/, 'Partial native light count is detected');
+  assert(scenes.size===beforeShort,'Short light count cleans up only the just-created scene');
+  const cleanup=await ready(),cleanupCount=scenes.size;faults.native='Wall';faults.cleanup=true;
+  await rejects(()=>cleanup.createScene(),/Partial scene.*NOT complete/, 'Cleanup failure identifies the exact partial scene and never marks complete');
+  assert(cleanup.partialScene&&scenes.size===cleanupCount+1&&!cleanup.scene,'Partial scene remains explicitly unlinked after cleanup failure');
+  await scenes.get(cleanup.partialScene).delete();
+  const current=oldSource.scene;
+  for(const failure of ['background','flags']) {
+    const update=await reopen(current);await update.previewArtwork();review(update);
+    const oldBackground=current.firstLevel.background.src,oldMap=JSON.stringify(update.workflow.map),oldNative=beforeNative();faults[failure]=true;
+    await rejects(()=>update.updateScene(),/Injected/,`Update ${failure} failure surfaces an error`);
+    assert(current.firstLevel.background.src===oldBackground&&JSON.stringify(update.workflow.map)===oldMap&&beforeNative()===oldNative,`Update ${failure} failure preserves background, original source and native geometry`);
+  }
+  const rollback=await reopen(current);await rollback.previewArtwork();review(rollback);
+  const restoreBackground=current.firstLevel.background.src;faults.flags=true;faults.backgrounds=[false,true];
+  await rejects(()=>rollback.updateScene(),/restoration failed/i, 'Background rollback failure reports manual recovery instead of claiming success');
+  delete faults.backgrounds;current.firstLevel.background.src=restoreBackground;
+  const concurrentBackground=await reopen(current);await concurrentBackground.previewArtwork();review(concurrentBackground);
+  faults.afterBackground=()=>{current.firstLevel.background.src='unrelated-background.png';};faults.flags=true;
+  await rejects(()=>concurrentBackground.updateScene(),/Another background change.*preserved/, 'Failure after an unrelated background write does not roll it back');
+  assert(current.firstLevel.background.src==='unrelated-background.png','Concurrent unrelated background is preserved for manual recovery');
+  current.firstLevel.background.src=restoreBackground;
+  const concurrentRevision=await reopen(current);await concurrentRevision.previewArtwork();review(concurrentRevision);
+  faults.afterBackground=()=>{current.flags['scene-architect'].revision='revision-during-background-write';};
+  await rejects(()=>concurrentRevision.updateScene(),/revision changed during application/i, 'Revision change during background write stops automatic restoration');
+  assert(current.firstLevel.background.src!==restoreBackground,'Revision conflict leaves current background untouched rather than overwriting concurrent work');
+  current.firstLevel.background.src=restoreBackground;
+  current.lights.push({id:'independent-gm-light',x:33,y:44,config:{dim:17,bright:5},flags:{custom:{owner:'GM'}}});
+  current.lights.find(light=>light.flags?.['scene-architect']?.generated).config.alpha=.12;
+  const independent=await reopen(current),lightsBefore=JSON.stringify(current.lights);await independent.previewArtwork();review(independent);await independent.updateScene();
+  assert(JSON.stringify(current.lights)===lightsBefore,'Independent GM lights and customized managed effects survive artwork update unchanged');
+  const asyncFile=await ready(),asyncCount=scenes.size;faults.afterUpload=()=>{asyncFile.selectedFile=null;asyncFile.invalidate();};
+  await rejects(()=>asyncFile.createScene(),/Preview/,'File change while uploading rejects stale preview');
+  assert(scenes.size===asyncCount,'Asynchronous file change creates no native scene');
+  const asyncSettings=await ready();faults.afterUpload=()=>{
+    const input=asyncSettings.element.querySelector('[name="bandPadding"]');input.value='.4';input.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+  await rejects(()=>asyncSettings.createScene(),/Apply/, 'Rendering change during upload prevents a stale background or scene');
+  const asyncPreview=await ready(),pendingPreview=asyncPreview.previewArtwork();
+  asyncPreview.invalidate('Changed during decode');
+  await rejects(()=>pendingPreview,/changed during preview/, 'A source decode completing after invalidation cannot restore a stale preview');
+  const final=await reopen(current);await final.previewArtwork();
+  final.element.querySelector('[name="diagnosticView"]').value='protected';await final.showDiagnostic();
+  assert(final.element.querySelectorAll('.sa-diagnostic-preview canvas').length===1&&final.element.querySelectorAll('.sa-artwork-preview canvas').length===1,'Diagnostics stay separate from the exact clean primary preview');
+  assert([...final.element.querySelectorAll('button')].every(b=>b.type==='button')&&final.element.querySelector('[data-status]').getAttribute('role')==='status','Native keyboard controls and live status semantics are present (not a full accessibility audit)');
+  await final.run('updateScene');
+  assert(notices.at(-1).includes('Inspect')&&final.element.querySelector('[data-status]').textContent.includes('Inspect'),'Action errors are notified, logged and exposed as live status');
+  final.status='Synthetic verification preview only. No generated-art quality or live Foundry behaviour has been verified.';await final.render();
+  document.querySelector('#check-summary').textContent=`PASS — ${results.length} browser checks (expand details)`;
+  document.querySelector('#results').textContent=`PASS — ${results.length} checks\n`+results.join('\n');
+  await output('browser-results.json',JSON.stringify({passed:results.length,checks:results,priorArtwork,limitations:['Foundry host APIs mocked; real v14 document/vision check still required.','The three v2 samples are synthetic, not model-generated artwork or evidence of visual success.','Optional prior artwork is earlier five-room evidence only, not visual acceptance or new six-room/three-scene validation.','Accessibility checks cover control semantics; no assistive-technology audit performed.']}));
 } catch(error) {
-  document.querySelector('#results').textContent=`FAIL: ${error.stack}\nPassed: ${results.join('\n')}`;
-  await fetch('/output/browser-results.json',{method:'POST',body:JSON.stringify({error:error.stack,passed:results.length,results},null,2)});
-  document.title='FAIL — Scene Architect';
+  document.querySelector('#check-details').open=true;document.querySelector('#check-summary').textContent='Browser checks failed';
+  document.querySelector('#results').textContent='FAIL: '+error.stack;
+  await output('browser-results.json',JSON.stringify({error:error.stack,passed:results.length,checks:results,priorArtwork}));
 }

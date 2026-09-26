@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'test-output');fs.mkdirSync(out,{recursive:true});
-const browser=process.env.SCENE_ARCHITECT_BROWSER||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+const browser=process.env.SCENE_ARCHITECT_BROWSER||'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 if(!fs.existsSync(browser))throw new Error('Set SCENE_ARCHITECT_BROWSER to a Chromium/Edge executable.');
 let resolveResult;const complete=new Promise(r=>resolveResult=r);
 const server=http.createServer(async(req,res)=>{
@@ -15,7 +15,7 @@ const server=http.createServer(async(req,res)=>{
       fs.writeFileSync(path.join(out,path.basename(pathname)),bytes);res.end('ok');
       if(pathname.endsWith('browser-results.json'))resolveResult(JSON.parse(bytes));return;
     }
-    const relative=pathname.startsWith('/output/')?'test-output/'+pathname.slice(8):pathname.slice(1);
+    const relative=pathname.startsWith('/output/')?'test-output/'+pathname.slice(8):pathname.replace(/^\/modules\/scene-architect\//,'/').slice(1);
     const file=path.resolve(root,relative||'tests/browser.html');
     if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}
     const type={'.html':'text/html','.js':'text/javascript','.json':'application/json','.png':'image/png','.css':'text/css','.hbs':'text/plain'}[path.extname(file)]||'application/octet-stream';
@@ -27,8 +27,16 @@ const url=`http://127.0.0.1:${server.address().port}/tests/browser.html`;
 const profile=fs.mkdtempSync(path.join(out,'edge-profile-'));
 const child=spawn(browser,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check',`--user-data-dir=${profile}`,'--window-size=1280,1800','--hide-scrollbars','--virtual-time-budget=20000',`--screenshot=${path.join(out,'browser.png')}`,url],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let stderr='';child.stderr.on('data',d=>stderr+=d);child.on('error',e=>resolveResult({error:e.message}));
-const timer=setTimeout(()=>resolveResult({error:'Browser harness timed out. '+stderr.slice(-2000)}),60000);
+const timer=setTimeout(()=>resolveResult({error:'Browser harness timed out. '+stderr.slice(-2000)}),120000);
 const result=await complete;clearTimeout(timer);
 // Give Chromium a bounded opportunity to write its screenshot and shut down.
-await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);
-child.kill();server.close();console.log(JSON.stringify(result,null,2));process.exitCode=result.error?1:0;
+if(child.exitCode===null)await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);
+if(child.exitCode===null) {
+  child.kill();
+  await new Promise(r=>child.once('exit',r));
+}
+server.close();
+// Only remove the fresh profile allocated by this invocation, after its browser exits.
+try {fs.rmSync(profile,{recursive:true,force:true,maxRetries:8,retryDelay:250});}
+catch(error) {console.warn(`Could not remove owned browser profile ${profile}: ${error.message}`);}
+console.log(JSON.stringify(result,null,2));process.exitCode=result.error?1:0;

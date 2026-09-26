@@ -110,6 +110,63 @@ function unitKeys(seg) {
   return keys;
 }
 
+function validateAnchorDressing(plan) {
+  const text=(value,label)=>{
+    if(typeof value!=='string'||!value.trim())throw new Error(`${label} must be nonempty text.`);
+  };
+  for(const room of plan.spaces) {
+    if(!Object.hasOwn(room,'dressing'))continue;
+    if(!Array.isArray(room.dressing)||room.dressing.length>64)throw new Error(`${room.id}.dressing must be an array of at most 64 descriptions.`);
+    const ids=new Set();
+    for(const d of room.dressing) {
+      if(!d||typeof d!=='object'||Array.isArray(d))throw new Error(`${room.id}.dressing entries must be objects.`);
+      if(d.role!=='soft-dressing')throw new Error(`${room.id}.dressing entries must have role soft-dressing.`);
+      for(const key of Object.keys(d))if(!['id','role','type','description','count'].includes(key))throw new Error(`${room.id}.dressing.${key} is unsupported; soft-dressing has no coordinates, footprints, relations or native lights.`);
+      if(typeof d.id!=='string'||d.id.length>64||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(d.id)||ids.has(d.id))throw new Error(`${room.id}.dressing has an invalid or duplicate ID.`);
+      ids.add(d.id);
+      text(d.type,`${d.id}.type`);text(d.description,`${d.id}.description`);
+      if(!Number.isInteger(d.count)||d.count<1||d.count>200)throw new Error(`${d.id}.count must be a whole number between 1 and 200.`);
+    }
+  }
+  const anchors=new Map();
+  for(const f of plan.features) {
+    if(!Object.hasOwn(f,'role')) {
+      if(Object.hasOwn(f,'facing')||Object.hasOwn(f,'placement'))throw new Error(`${f.id}: facing and placement require role major-anchor.`);
+      continue;
+    }
+    if(f.role!=='major-anchor')throw new Error(`${f.id}: plan.features may only store role major-anchor; put soft-dressing in its room.`);
+    for(const key of Object.keys(f))if(!['id','role','type','description','roomId','x','y','width','height','rotation','layer','assetId','placement','facing'].includes(key))throw new Error(`${f.id}.${key} is unsupported for a major-anchor.`);
+    text(f.type,`${f.id}.type`);text(f.description,`${f.id}.description`);
+    if(f.layer!=='prop')throw new Error(`${f.id}: major-anchor must use the prop layer.`);
+    if(Object.hasOwn(f,'placement')) {
+      if(f.placement!=='centered')throw new Error(`${f.id}.placement is unsupported; only centered is supported.`);
+      const room=plan.spaces.find(r=>r.id===f.roomId);
+      if(Math.abs(f.x+f.width/2-room.x-room.width/2)>1e-8||Math.abs(f.y+f.height/2-room.y-room.height/2)>1e-8)throw new Error(`${f.id}: centered anchor must be at its room centre.`);
+    }
+    if(Object.hasOwn(f,'facing'))text(f.facing,`${f.id}.facing`);
+    anchors.set(f.id,f);
+  }
+  for(const room of plan.spaces)if([...anchors.values()].filter(f=>f.roomId===room.id).length>16)throw new Error(`${room.id} supports at most 16 major-anchor instances.`);
+  const visiting=new Set(),visited=new Set();
+  const visit=f=>{
+    if(visited.has(f.id))return;
+    if(visiting.has(f.id))throw new Error(`${f.id}: facing relations contain a cycle.`);
+    visiting.add(f.id);
+    if(f.facing) {
+      const target=anchors.get(f.facing);
+      if(!target)throw new Error(`${f.id}: facing target must reference an existing major-anchor.`);
+      if(target.roomId!==f.roomId)throw new Error(`${f.id}: facing target must be in the same room.`);
+      visit(target);
+      const dx=target.x+target.width/2-f.x-f.width/2,dy=target.y+target.height/2-f.y-f.height/2;
+      const distance=Math.hypot(dx,dy),angle=f.rotation*Math.PI/180;
+      // Front is north at zero, rotating clockwise about the feature centre.
+      if(distance<1e-8||(Math.sin(angle)*dx-Math.cos(angle)*dy)/distance<1-1e-8)throw new Error(`${f.id}: rotation must actually face target ${target.id} (north=0 degrees, clockwise).`);
+    }
+    visiting.delete(f.id);visited.add(f.id);
+  };
+  anchors.forEach(visit);
+}
+
 export function validatePlan(plan) {
   if (![1,2].includes(plan.version)) throw new Error('Unsupported plan version. Use version 1 or 2.');
   validateBasePlan(plan);
@@ -161,6 +218,7 @@ export function validatePlan(plan) {
   for(const [i,f] of plan.features.entries()) for(const other of plan.features.slice(i+1)) {
     if(f.layer==='prop'&&other.layer==='prop'&&polygonsOverlap(featureCorners(f),featureCorners(other))) throw new Error(`Props ${f.id} and ${other.id} overlap.`);
   }
+  validateAnchorDressing(plan);
   for(const [i,l] of plan.lights.entries()) {
     if(typeof l.animation==='string')l.animation={type:l.animation,speed:2,intensity:2,reverse:false};
     const label=`lights[${i}]`,semantic=l.preset!=null;

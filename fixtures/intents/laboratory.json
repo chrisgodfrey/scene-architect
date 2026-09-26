@@ -1,0 +1,82 @@
+{
+  "kind": "scene-intent",
+  "version": 2,
+  "scene": {
+    "name": "The Instantiator Laboratory",
+    "description": "Six connected rooms around a circulation spine: an experimental laboratory, side machinery, medical ward, access chamber, records and supplies. The three restraint beds must face the Instantiator.",
+    "visualDirection": "True overhead dark stone and steampunk copper, soot-black iron, tarnished brass, restrained violet and viridian glow. Hand-painted mineral texture, fine mechanical ornament, no perspective, text or grid.",
+    "circulation": "central-corridor"
+  },
+  "rooms": [
+    {
+      "id": "central-laboratory",
+      "name": "Central laboratory",
+      "purpose": "The large Instantiator dominates the chamber; exactly three restraint beds direct their head ends toward its core.",
+      "size": "large",
+      "floor": "dark stone",
+      "features": [
+        {"id": "instantiator", "role": "major-anchor", "type": "machine", "description": "Large copper Instantiator with a violet containment core and concentric brass coils", "size": "large", "placement": "centered", "count": 1, "lightPreset": "magic-portal"},
+        {"id": "restraint-bed", "role": "major-anchor", "type": "bed", "description": "Iron restraint bed with leather straps; head/front points toward the Instantiator", "size": "medium", "count": 3, "facing": "instantiator"},
+        {"id": "oil-lamp", "role": "major-anchor", "type": "lamp", "description": "Protective brass cage around an oil lamp", "size": "small", "count": 2, "lightPreset": "flickering-lamp"},
+        {"id": "instrument-trays", "role": "soft-dressing", "type": "clutter", "description": "Instrument trays, loose wires, gauges and copper hand tools", "count": 12},
+        {"id": "control-furniture", "role": "soft-dressing", "type": "furniture", "description": "Small control desks and worn stools, visually subordinate to the experiment", "count": 4}
+      ]
+    },
+    {
+      "id": "machinery",
+      "name": "Side machinery room",
+      "purpose": "Power conversion and maintenance supporting the experiment.",
+      "size": "medium",
+      "floor": "iron plate",
+      "features": [
+        {"id": "dynamo", "role": "major-anchor", "type": "machine", "description": "Heavy flywheel dynamo with green current indicators", "size": "large", "count": 1, "placement": "centered", "lightPreset": "pulsing-magic"},
+        {"id": "workshop", "role": "soft-dressing", "type": "furniture", "description": "Maintenance benches, tool racks and spare gears", "count": 8}
+      ]
+    },
+    {
+      "id": "medical",
+      "name": "Medical ward",
+      "purpose": "Recovery and treatment, distinct from the experiment's three restraint beds.",
+      "size": "medium",
+      "floor": "pale stone",
+      "features": [
+        {"id": "medical-bed", "role": "major-anchor", "type": "bed", "description": "Clean medical recovery bed with folded linen and no restraints", "size": "medium", "count": 3},
+        {"id": "medical-storage", "role": "soft-dressing", "type": "furniture", "description": "Medicine cupboards, wash bowls and treatment stools", "count": 7}
+      ],
+      "ambientLight": true
+    },
+    {
+      "id": "access",
+      "name": "Access chamber",
+      "purpose": "Controlled entry, protective clothing and visitor inspection.",
+      "size": "small",
+      "floor": "dark stone",
+      "features": [
+        {"id": "inspection-desk", "role": "major-anchor", "type": "desk", "description": "Brass-bound inspection desk", "size": "small", "count": 1},
+        {"id": "coat-storage", "role": "soft-dressing", "type": "furniture", "description": "Coat pegs, protective aprons, boots and a narrow bench", "count": 8}
+      ],
+      "ambientLight": true
+    },
+    {
+      "id": "records",
+      "name": "Research archive",
+      "purpose": "Experiment logs, diagrams and specimen records.",
+      "size": "small",
+      "floor": "aged wood",
+      "features": [
+        {"id": "archive", "role": "soft-dressing", "type": "furniture", "description": "Tall bookshelves, filing cabinets, a writing desk and parchment bundles", "count": 12}
+      ],
+      "ambientLight": true
+    },
+    {
+      "id": "supplies",
+      "name": "Stores and preparation",
+      "purpose": "Spare components and prepared reagents.",
+      "size": "small",
+      "floor": "dark stone",
+      "features": [
+        {"id": "reagent-store", "role": "soft-dressing", "type": "furniture", "description": "Crates, labelled-looking unlettered bottles, copper vessels and storage shelving", "count": 18}
+      ]
+    }
+  ]
+}

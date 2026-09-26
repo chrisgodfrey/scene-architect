@@ -44,6 +44,14 @@ test('scene intent prompt is coordinate-free and preserves the low-level boundar
   assert.match(prompt,/Use flickering-lamp for ordinary lanterns and oil lamps/);
   assert.match(prompt,/Reserve steady-lamp for genuinely constant magical or electric fixtures/);
   assert.match(prompt,/flicker/);
+  assert.match(prompt,/"version": 2/);
+  assert.match(prompt,/"role": "major-anchor"/);
+  assert.match(prompt,/"role": "soft-dressing"/);
+  assert.match(prompt,/"placement": "centered"/);
+  assert.match(prompt,/"facing": "instantiator"/);
+  assert.match(prompt,/North=0 degrees, clockwise around the feature centre/);
+  assert.match(prompt,/Soft dressing cannot emit native lights/);
+  assert.match(prompt,/never inferred geometry/);
 });
 
 test('central corridor gives every requested room direct shared circulation',()=>{
@@ -130,8 +138,27 @@ test('bounded room and topology matrix always produces validated deterministic p
 
 test('invalid and over-capacity intent fails before returning a plan',()=>{
   assert.throws(()=>compileSceneIntent(null),/JSON object/);
-  assert.throws(()=>compileSceneIntent({kind:'scene-intent',version:2,scene:{},rooms:[room(1)]}),/Unsupported scene design version/);
+  assert.throws(()=>compileSceneIntent({kind:'scene-intent',version:3,scene:{},rooms:[room(1)]}),/Unsupported scene design version/);
   assert.throws(()=>compileSceneIntent({kind:'scene-intent',version:1,scene:{},rooms:[]}),/at least one room/);
   assert.throws(()=>compileSceneIntent(intent(Array.from({length:20},(_,index)=>room(index+1)),{circulation:'central-corridor'}),{columns:12,rows:12,gridSize:70}),/too many rooms/);
   assert.throws(()=>compileSceneIntent(intent([room(1,{features:[{id:'bed',type:'bed',description:'Bed',size:'large',count:16}]})]),{columns:8,rows:8,gridSize:70}),/cannot fit all requested features/);
+});
+
+test('version 1 keeps legacy feature packing, ID disambiguation and light behavior',()=>{
+  const raw=intent([room(1,{features:[
+    {id:'Desk',type:'desk',size:'small',count:1,lightPreset:'steady-lamp'},
+    {id:'Desk',type:'desk',size:'small',count:1,lightPreset:'ambient-fill'}
+  ]})]);
+  const original=structuredClone(raw),normalized=normalizeSceneIntent(raw);
+  assert.equal(normalized.version,1);
+  assert.deepEqual(normalized.rooms[0].features.map(f=>f.id),['desk','desk-2']);
+  const plan=checked(compileSceneIntent(raw,{columns:12,rows:12,gridSize:70}));
+  assert.deepEqual(plan.features.map(({id,x,y,width,height,rotation})=>({id,x,y,width,height,rotation})),[
+    {id:'desk',x:1.75,y:1.75,width:1.5,height:1,rotation:0},
+    {id:'desk-2',x:3.25,y:1.75,width:1.5,height:1,rotation:0}
+  ]);
+  assert(plan.features.every(f=>!Object.hasOwn(f,'role')));
+  assert(plan.spaces.every(r=>!Object.hasOwn(r,'dressing')));
+  assert.equal(plan.lights.length,2);
+  assert.deepEqual(raw,original);
 });
