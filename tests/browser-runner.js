@@ -25,7 +25,7 @@ const server=http.createServer(async(req,res)=>{
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const url=`http://127.0.0.1:${server.address().port}/tests/browser.html`;
 const profile=fs.mkdtempSync(path.join(out,'edge-profile-'));
-const child=spawn(browser,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check',`--user-data-dir=${profile}`,'--window-size=1280,1800','--hide-scrollbars','--virtual-time-budget=20000',`--screenshot=${path.join(out,'browser.png')}`,url],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+const child=spawn(browser,['--headless=new','--disable-gpu','--disable-extensions','--no-first-run','--no-default-browser-check',`--user-data-dir=${profile}`,'--window-size=1280,1800','--hide-scrollbars','--virtual-time-budget=120000',`--screenshot=${path.join(out,'browser.png')}`,url],{windowsHide:true,stdio:['ignore','ignore','pipe']});
 let stderr='';child.stderr.on('data',d=>stderr+=d);child.on('error',e=>resolveResult({error:e.message}));
 const timer=setTimeout(()=>resolveResult({error:'Browser harness timed out. '+stderr.slice(-2000)}),120000);
 const result=await complete;clearTimeout(timer);

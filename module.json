@@ -2,10 +2,10 @@
   "id": "scene-architect",
   "title": "Scene Architect",
   "description": "Text-model scene design, deterministic server-asset rendering and optional generated-artwork composition for Foundry VTT v14.",
-  "version": "0.3.0-alpha.3",
+  "version": "0.3.0-alpha.4",
   "url": "https://github.com/chrisgodfrey/scene-architect",
   "manifest": "https://raw.githubusercontent.com/chrisgodfrey/scene-architect/main/module.json",
-  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.3/scene-architect.zip",
+  "download": "https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.4/scene-architect.zip",
   "authors": [
     {
       "name": "Chris + ChatGPT"

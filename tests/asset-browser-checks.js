@@ -38,7 +38,8 @@ export async function checkAssetWorkflow({assert,rejects,SceneArchitectApp,setti
   picker.upload=async(...args)=>{const saved=await oldUpload(...args);return {...saved,path:saved.path.replace(/^\//,'')};};
   try {
     settings.set('localDraft','');const app=new SceneArchitectApp();await app.render();
-    assert(app.workflow.mode==='assets'&&app.element.querySelector('[name="assetRoot"]'),'New projects expose the server asset workflow by default');
+    assert(app.workflow.mode==='assets'&&app.workflow.assetSelection==='automatic','New projects default to automatic server asset selection');
+    await app.openSetup();
     app.element.querySelector('[name="assetRoot"]').value=' ';
     await rejects(()=>app.indexLibrary(),/Choose an asset folder/,'Blank asset root never indexes the entire Foundry Data directory');
     const brief=app.element.querySelector('[name="brief"]');brief.value='Describe before choosing assets';brief.dispatchEvent(new Event('input'));
@@ -70,11 +71,12 @@ export async function checkAssetWorkflow({assert,rejects,SceneArchitectApp,setti
     reply.plan.assetScene.surroundAsset=ids.get('floor');reply.plan.assetScene.wallAsset=ids.get('wall');
     reply.plan.spaces.forEach(r=>r.floorAsset=ids.get('floor'));
     reply.plan.features.forEach(f=>f.assetId=ids.get(f.assetId));
-    setDialog({json:JSON.stringify({...reply,requestId:'stale'})});
+    const setResponse=json=>{app.element.querySelector('[name="responseText"]').value=json;};
+    setResponse(JSON.stringify({...reply,requestId:'stale'}));
     await rejects(()=>app.pastePlan(),/different request/,'Stale model response is rejected without importing a plan');
     assert(!app.plan&&app.workflow.assetRepair,'Rejected asset JSON retains a repair request and leaves prior state intact');
     await app.copyPlanRepairPrompt();
-    app.element.querySelector('[name="columns"]').value='13';setDialog({json:JSON.stringify(reply)});
+    app.element.querySelector('[name="columns"]').value='13';setResponse(JSON.stringify(reply));
     await rejects(()=>app.pastePlan(),/changed/,'Changed form dimensions invalidate the pending response');
     app.element.querySelector('[name="columns"]').value='12';
     await app.pastePlan();await app.buildPlan();const count=scenes.size,uploadCount=uploads.length;

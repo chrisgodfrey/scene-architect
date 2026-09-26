@@ -40,6 +40,24 @@ test('model output cannot change dimensions, request identity, paths or trusted 
   }
   assert.throws(()=>importAssetResponse('x'.repeat(1_000_001),request),/1 MB/);
 });
+test('automatic metadata has strict honest provenance without fabricated human confirmation',()=>{
+  const {palette,form,response}=assetFixture();
+  for(const entry of palette) {
+    entry.confirmed=false;entry.calibration={source:'automatic',method:'library-density',pixelsPerCell:entry.pixelWidth/entry.width};
+  }
+  const request=createAssetRequest(form,palette,response.requestId);
+  const plan=importAssetResponse(JSON.stringify(response),request);
+  assert.ok(plan.assetScene.palette.every(a=>!a.confirmed&&a.calibration.source==='automatic'));
+  assert.deepEqual(plan.assetScene.palette,request.palette);
+  for(const calibration of [null,{},[],{source:'human',method:'filename',pixelsPerCell:100},
+    {source:'automatic',method:'guess',pixelsPerCell:100},{source:'automatic',method:'filename',pixelsPerCell:0},
+    {source:'automatic',method:'filename',pixelsPerCell:NaN},{source:'automatic',method:'filename',pixelsPerCell:100,extra:true}]) {
+    const invalid=structuredClone(palette);invalid[0].calibration=calibration;
+    assert.throws(()=>validatePalette(invalid));
+  }
+  delete palette[0].calibration;
+  assert.throws(()=>createAssetRequest(form,palette),/manual/);
+});
 test('asset plans reject invalid geometry and preserve calibrated proportions',()=>{
   for(const mutate of [
     p=>p.features[0].width=3,

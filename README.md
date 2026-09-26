@@ -4,11 +4,11 @@ description: Build Foundry VTT scenes deterministically from server assets or co
 ---
 
 Scene Architect for **Foundry VTT v14** owns the map's geometry. The
-server-asset workflow uses a text-model design and a reviewed palette to build
+server-asset workflow automatically prepares a palette for a text-model design to build
 the background, native walls, doors and lights deterministically. It needs no
 image generation, model API key, asset-provider module or subscription.
 
-**Index assets → Review palette → Copy design request → Import JSON → Render → Create Scene**
+**Describe → Design → Preview & create**
 
 The existing generated-artwork workflow remains available. It treats a returned
 image as an appearance layer and replaces protected architectural pixels before
@@ -16,10 +16,10 @@ creating the background and native documents.
 
 ## Development status
 
-**0.3.0-alpha.3** is an experimental prerelease for Foundry testing. It adds the
-server-asset workflow to the architecture-first development line introduced after
-**0.2.0-alpha.15**. New projects default to server assets; existing artwork projects
-retain their original workflow.
+**0.3.0-alpha.4** is an experimental prerelease for Foundry testing. It adds
+automatic asset selection and a brief-first interface to the deterministic
+server-asset workflow introduced in alpha.3. New projects default to server assets;
+existing artwork projects retain their original workflow.
 Live alpha.2 creation, reopening, artwork updates, native doors and token vision
 were verified in Foundry 14.368. Finished-map visual quality remains a separate gate.
 The asset workflow also passed isolated live indexing, import, rendering,
@@ -30,8 +30,8 @@ anything to an AI provider.
 
 Structural correctness and visual quality are separate gates. Automated canvas
 and geometry checks do not establish that a generated map looks convincing.
-The accepted small server-asset proof establishes a viable geometry-first direction,
-not automatic aesthetic quality or full-library performance.
+Live full-library loading and automatic preparation are verified, but they do not
+establish automatic aesthetic quality or performance for every asset collection.
 
 Alpha.2 fixes alpha.1 rejecting newly created scenes with fractional-pixel light
 positions. Creation and comparison now use the installed Foundry coordinate-field
@@ -42,7 +42,53 @@ without the earlier one-source-pixel limit. The preview discloses the small
 proportional correction. This does not repair displaced painted doorways, vertical
 wall faces or other artwork that disagrees with the reference.
 
-## Using server assets
+## Using the brief-first workflow
+
+Alpha.4 uses **Describe → Design → Preview & create**.
+Connect your own licensed library once; purchased assets are not bundled.
+
+1. Enter a scene name and description. Map dimensions are optional controls.
+2. Connect your server asset folder once with **Browse folders** and **Connect
+   library**. Later projects load that shared catalogue automatically.
+3. Choose **Get AI design request**. Deterministic filename/path matching selects
+   a bounded, varied shortlist for your brief, including materials and wall strips.
+   Give the copied request to your preferred text AI.
+4. Paste the complete response into **AI response JSON** and choose **Validate &
+   preview**. Validation, local construction and asset rendering are one action.
+   Invalid or stale responses remain editable; a correction request is provided.
+5. Inspect the preview, confirm it, and choose **Create Scene**. No scene or
+   rendered-image upload is made before this explicit step.
+
+There is no mandatory per-image selection or calibration. The model chooses final
+materials and furnishings from the shortlist. No additional inference call,
+embedding service or provider-specific integration is introduced. Clipboard denial
+leaves the request visible for manual copying instead of opening another dialog.
+
+Automatic metadata records its origin honestly: filename footprints and estimated
+library pixel density are not human-confirmed calibration. Full-frame proportions
+and transparent padding are retained. Selection returns at most 36 candidates by
+default and decodes no more than 64 candidates. Missing images, unsupported
+dimensions, decode budgets and unavailable architectural roles produce explicit
+recovery messages, not placeholder success. Sparse or opaque filenames limit
+retrieval quality; inspect the result rather than assuming physical scale is exact.
+Large-library preparation uses cooperative browser scheduling where available,
+avoiding chained-timer delays in background tabs while retaining cancellation.
+
+**Projects & advanced tools** contains library refresh, manual overrides, saved
+projects, diagnostics and the generated-artwork workflow. Editing an automatic
+entry removes automatic readiness until that override is reviewed. Older confirmed
+palettes remain supported. Saved asset scenes retain their own palette and can be
+rendered without loading the catalogue.
+
+This changes the workflow, not the geometry engine: rooms are still connected,
+non-overlapping rectangles. Circular lighthouses and curved architecture are not
+implemented. Live checks cover the new folder picker and automatic request
+preparation; full scene lifecycle checks for the engine are retained from alpha.3.
+
+## Earlier alpha.3 manual workflow
+
+These steps describe the previous release. After updating to alpha.4, use the
+brief-first workflow above; per-image selection is optional under advanced tools.
 
 1. Put licensed PNG, JPEG or WebP assets anywhere under Foundry's Data directory.
    A folder such as `assets/map-library` is convenient, not mandatory. The module
@@ -283,11 +329,11 @@ In Foundry's **Add-on Modules**, update Scene Architect, or install it using thi
 version-specific manifest:
 
 ```text
-https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.3/module.json
+https://github.com/chrisgodfrey/scene-architect/releases/download/v0.3.0-alpha.4/module.json
 ```
 
-Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.3**.
-The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.3)
+Restart Foundry, hard-refresh the browser and confirm **0.3.0-alpha.4**.
+The [prerelease](https://github.com/chrisgodfrey/scene-architect/releases/tag/v0.3.0-alpha.4)
 also provides the module ZIP for manual installation.
 There is no runtime build step. To package a local checkout:
 
@@ -298,7 +344,11 @@ powershell -NoProfile -File tools\package-module.ps1
 The local packager verifies the runtime files and writes
 `dist/scene-architect.zip` with the manifest at its root. It excludes experiments,
 tests and dependencies. Extract into `Data/modules/scene-architect/`, restart
-Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.3**.
+Foundry and hard-refresh the browser. Confirm version **0.3.0-alpha.4**.
+
+Existing library settings, saved projects and palette snapshots are retained.
+Prepare a fresh AI design request to use an expanded library; an existing request
+continues to reference its original palette.
 
 If alpha.1 failed with "Managed light positions differ", reopen the local draft,
 reselect the original artwork, preview it again and retry **Create Scene**.
@@ -329,11 +379,17 @@ Near-matching artwork tests cover the reported 1403 x 1121 dimensions, the exact
 0.2% acceptance boundary, full-frame corner preservation, preview disclosure and
 reapplication without native-document changes.
 
-Alpha.3 passed 136 Node tests and 203 browser checks. The asset checks cover
+Alpha.4 passed 169 Node tests and 267 browser checks. The asset checks cover
 catalogue shards, calibrated metadata, stale requests, explicit failure paths,
 deterministic rendering and project persistence. A separate live Foundry 14.368
 pass verified native creation and updates, door collisions and client reload
-without changing existing scenes.
+without changing existing scenes. Alpha.4 adds real-template guided-flow,
+automatic selection, inferred calibration, cancellation and background-scheduler
+regressions. Live Foundry tests verified folder selection and request preparation.
+A 315,374-image catalogue loaded in 8.3 seconds, followed by a 36-image cold
+preparation in 4.7 seconds in the tested browser. This is one measured environment,
+not a latency guarantee. Automatic preparation and the library switch preserved
+the current draft and existing scenes.
 
 Structural checks cover exact native/raster coordinates, full protected-band
 source exclusion, opening clearance, secret concealment, dimensions, repeatable

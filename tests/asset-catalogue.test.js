@@ -1,13 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizeAssetPath, buildCatalogue, searchCatalogue, saveCatalogue, loadCatalogue
+  normalizeAssetPath, buildCatalogue, searchCatalogue, saveCatalogue, loadCatalogue, yieldWork
 } from '../scripts/asset-catalogue.js';
 
 const root = 'assets';
 const abort = error => error.name === 'AbortError';
 const buildFiles = (files, options = {}) => buildCatalogue(root, {
   browse: async () => ({ files, dirs: [] }), ...options
+});
+
+test('cooperative work uses scheduler tasks and preserves cancellation and failures', async t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'scheduler');
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'scheduler', original);
+    else delete globalThis.scheduler;
+  });
+  let calls = 0;
+  const scheduler = { async yield() { assert.equal(this, scheduler); calls++; } };
+  Object.defineProperty(globalThis, 'scheduler', { configurable: true, value: scheduler });
+  t.mock.method(globalThis, 'setTimeout', () => { throw new Error('Unexpected throttled timer'); });
+  await yieldWork();
+  assert.equal(calls, 1);
+
+  const before = new AbortController();
+  before.abort();
+  await assert.rejects(yieldWork(before.signal), abort);
+  assert.equal(calls, 1);
+
+  const during = new AbortController();
+  scheduler.yield = async () => { during.abort(); };
+  await assert.rejects(yieldWork(during.signal), abort);
+  scheduler.yield = async () => { throw new Error('Scheduler failed'); };
+  await assert.rejects(yieldWork(), /Scheduler failed/);
+});
+
+test('cooperative work retains the timer fallback without scheduler support', async t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'scheduler');
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'scheduler', original);
+    else delete globalThis.scheduler;
+  });
+  const timer = t.mock.method(globalThis, 'setTimeout');
+  for (const value of [undefined, {}]) {
+    Object.defineProperty(globalThis, 'scheduler', { configurable: true, value });
+    await yieldWork();
+  }
+  assert.equal(timer.mock.callCount(), 2);
+  assert(timer.mock.calls.every(call => call.arguments[1] === 0));
 });
 
 function storage() {

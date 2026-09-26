@@ -12,7 +12,7 @@ export function validatePalette(input,{requireConfirmed=true}={}) {
   const ids=new Set();
   return input.map(raw=>{
     object(raw,'Palette entry');
-    keys(raw,['id','src','label','kind','width','height','pixelWidth','pixelHeight','anchorY','confirmed'],'Palette entry');
+    keys(raw,['id','src','label','kind','width','height','pixelWidth','pixelHeight','anchorY','confirmed','calibration'],'Palette entry');
     const a=structuredClone(raw);
     if(typeof a.id!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(a.id)||Object.hasOwn(Object.prototype,a.id)||a.id==='prototype'||ids.has(a.id))
       throw new Error('Palette IDs must be unique safe identifiers.');
@@ -26,7 +26,17 @@ export function validatePalette(input,{requireConfirmed=true}={}) {
     if(a.pixelWidth*a.pixelHeight>40_000_000)throw new Error(`${a.id}: image exceeds 40 megapixels.`);
     if(Math.abs(a.width/a.height/(a.pixelWidth/a.pixelHeight)-1)>0.002)throw new Error(`${a.id}: calibration must preserve the full image aspect ratio.`);
     number(a.anchorY,`${a.id} wall center`,0,1);
-    if(typeof a.confirmed!=='boolean'||requireConfirmed&&!a.confirmed)throw new Error(`${a.label}: review and confirm role, scale and wall center first.`);
+    if(a.calibration!==undefined) {
+      object(a.calibration,`${a.id} calibration`);
+      keys(a.calibration,['source','method','pixelsPerCell'],`${a.id} calibration`);
+      if(a.calibration.source!=='automatic'||!['filename','library-density'].includes(a.calibration.method))
+        throw new Error(`${a.id}: unsupported automatic calibration provenance.`);
+      number(a.calibration.pixelsPerCell,`${a.id} pixels per cell`,.01,800000);
+      if(Math.abs(a.pixelWidth/a.width/a.calibration.pixelsPerCell-1)>.002)
+        throw new Error(`${a.id}: automatic density must match the full-frame footprint.`);
+    }
+    if(typeof a.confirmed!=='boolean'||requireConfirmed&&!a.confirmed&&!a.calibration)
+      throw new Error(`${a.label}: review and confirm the manual role, scale and wall center first.`);
     return a;
   });
 }
@@ -67,7 +77,7 @@ export function createAssetRequest(form,palette,id=globalThis.crypto.randomUUID(
   for(const [key,min] of [['columns',4],['rows',4],['gridSize',50]])
     if(!Number.isInteger(scene[key])||scene[key]<min)throw new Error(`scene.${key} must be an integer of at least ${min}.`);
   const selected=validatePalette(palette);
-  if(!selected.some(a=>a.kind==='material')||!selected.some(a=>a.kind==='wall'))throw new Error('Select and confirm at least one material and one horizontal wall strip.');
+  if(!selected.some(a=>a.kind==='material')||!selected.some(a=>a.kind==='wall'))throw new Error('The library needs a usable material and a horizontal wall strip. Connect or refresh a folder containing both, or use manual overrides.');
   text(id,'Request ID',100);
   return {version:1,id,scene,palette:selected};
 }

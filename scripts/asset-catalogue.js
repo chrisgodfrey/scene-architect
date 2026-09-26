@@ -20,9 +20,11 @@ function checkAbort(signal) {
   if (signal?.aborted) throw abortError();
 }
 
-async function yieldWork(signal) {
+export async function yieldWork(signal) {
   checkAbort(signal);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  // Chained timers are throttled heavily in background browser tabs.
+  if (typeof globalThis.scheduler?.yield === 'function') await globalThis.scheduler.yield();
+  else await new Promise(resolve => setTimeout(resolve, 0));
   checkAbort(signal);
 }
 

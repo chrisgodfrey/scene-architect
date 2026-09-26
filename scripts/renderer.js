@@ -12,11 +12,20 @@ export function canvasBlob(canvas) {
   return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode artwork.')),'image/png'));
 }
 
-export function loadImage(src) {
+export function loadImage(src,{signal,maxPixels=40_000_000}={}) {
   return new Promise((resolve,reject)=>{
+    if(!Number.isInteger(maxPixels)||maxPixels<1||maxPixels>40_000_000){reject(new Error('Invalid image pixel budget.'));return;}
+    if(signal?.aborted){reject(new DOMException('Image loading cancelled.','AbortError'));return;}
     const img=new Image();img.crossOrigin='anonymous';
-    img.onload=()=>{if(img.width*img.height>40_000_000) reject(new Error('Asset exceeds 40 megapixels. Resize it before importing.'));else resolve(img);};
-    img.onerror=()=>reject(new Error(`Could not load image: ${src}. Check its path and image permissions.`));img.src=src;
+    const cleanup=()=>{img.onload=null;img.onerror=null;signal?.removeEventListener('abort',abort);};
+    const abort=()=>{cleanup();img.src='';reject(new DOMException('Image loading cancelled.','AbortError'));};
+    img.onload=()=>{
+      cleanup();
+      if(img.width*img.height>maxPixels){img.src='';reject(new Error(`Asset exceeds the ${maxPixels/1_000_000} megapixels image budget. Resize it before importing.`));}
+      else resolve(img);
+    };
+    img.onerror=()=>{cleanup();reject(new Error(`Could not load image: ${src}. Check its path and image permissions.`));};
+    signal?.addEventListener('abort',abort,{once:true});img.src=src;
   });
 }
 

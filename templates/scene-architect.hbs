@@ -1,185 +1,188 @@
 <div class="sa-shell">
-  <header class="sa-section">
-    <h1>Scene Architect</h1>
-    <p>Design with a text model, build deterministically, inspect the result, then create a playable scene.</p>
-    <label>Workflow <select name="workflowMode"><option value="assets" {{#if assetMode}}selected{{/if}}>Server assets (text model only)</option><option value="artwork" {{#unless assetMode}}selected{{/unless}}>Generated artwork (existing workflow)</option></select></label>
-    <button type="button" data-action="switchWorkflow">Start selected workflow</button>
+  <header class="sa-header">
     <ol class="sa-progress" aria-label="Scene creation progress">
       {{#each steps}}
-      <li class="sa-progress-item {{#if current}}is-current{{/if}} {{#if complete}}is-complete{{/if}}" data-step="{{number}}" {{#if current}}aria-current="step"{{/if}}>
+      <li class="sa-progress-item {{#if current}}is-current{{/if}}" {{#if current}}aria-current="step"{{/if}}>
         <span class="sa-progress-index">{{number}}</span><span>{{label}}</span>
       </li>
       {{/each}}
     </ol>
-    <p class="sa-status" role="status" aria-live="polite" aria-atomic="true" data-status>{{status}}</p>
-    {{#if partialScene}}<p role="alert">Partial scene {{partialScene}} remains after cleanup failed. It is NOT complete. Inspect or delete that scene manually.</p>{{/if}}
+    <p class="sa-status" role="{{#if error}}alert{{else}}status{{/if}}" aria-live="{{#if error}}assertive{{else}}polite{{/if}}" aria-atomic="true" data-status>{{status}}</p>
+    <button type="button" data-action="cancelIndex" hidden>Cancel preparation</button>
+    {{#if partialScene}}<p role="alert">Partial scene {{partialScene}} remains after cleanup failed. It is NOT complete. Inspect or delete it manually.</p>{{/if}}
+  </header>
+
+  <section class="sa-section" data-stage="describe" {{#unless describeStage}}hidden{{/unless}} aria-labelledby="sa-describe-title">
+    <h2 id="sa-describe-title" tabindex="-1">What are we building?</h2>
+    <p>{{#if assetMode}}Describe the place. Scene Architect will choose assets; your text AI will design the layout.{{else}}Describe the place. Your text AI designs the rooms; an image model supplies the artwork.{{/if}}</p>
+    <label>Scene name <input name="sceneName" type="text" value="{{sceneName}}" maxlength="200"></label>
+    <label>Scene description <textarea name="brief" rows="5" maxlength="10000" placeholder="An old lighthouse: a keeper's bedroom, a workshop, weathered stone, warm lamps...">{{brief}}</textarea></label>
+    <details>
+      <summary>Map size: {{columns}} x {{rows}} cells</summary>
+      <div class="sa-grid sa-grid-3">
+        <label>Columns <input name="columns" type="number" min="4" step="1" value="{{columns}}"></label>
+        <label>Rows <input name="rows" type="number" min="4" step="1" value="{{rows}}"></label>
+        <label>Grid pixels <input name="gridSize" type="number" min="50" step="1" value="{{gridSize}}"></label>
+      </div>
+      <p class="hint">Connected rectangular rooms. No circular or curved architecture yet.</p>
+    </details>
+    {{#if assetMode}}
+    {{#if setupOpen}}
+    <div class="sa-library-setup">
+      <h3>Connect your asset library once</h3>
+      <p>Choose a folder on the Foundry server. Subfolders are included. No particular provider or subscription is required.</p>
+      <label>Asset folder <input name="assetRoot" value="{{libraryRoot}}" placeholder="assets/map-library"></label>
+      <div class="sa-actions sa-wrap">
+        <button type="button" data-action="chooseAssetRoot">Browse folders</button>
+        <button type="button" data-action="indexLibrary" class="{{#if describeStage}}sa-primary{{/if}}">Connect library</button>
+      </div>
+      <p class="hint">Large libraries take time to index. Cancelling keeps the previous catalogue available.</p>
+    </div>
+    {{else}}
+    <p class="hint">{{#if automaticAssets}}{{#if libraryConnected}}Assets selected automatically from your connected library.{{else}}Connect a server library once to enable automatic asset selection.{{/if}}{{else}}Manual asset overrides are enabled. <button type="button" data-action="useAutomaticAssets">Use automatic selection</button>{{/if}}</p>
+    <div class="sa-actions">
+      {{#if libraryConnected}}
+      <button type="button" data-action="copyLayoutPrompt" class="{{#if describeStage}}sa-primary{{/if}}">Get AI design request</button>
+      {{else}}
+      {{#if automaticAssets}}<button type="button" data-action="openSetup" class="{{#if describeStage}}sa-primary{{/if}}">Connect asset library</button>
+      {{else}}<button type="button" data-action="copyLayoutPrompt" class="{{#if describeStage}}sa-primary{{/if}}">Get AI design request</button>{{/if}}
+      {{/if}}
+    </div>
+    {{/if}}
+    {{else}}
+    <button type="button" data-action="copyLayoutPrompt" class="{{#if describeStage}}sa-primary{{/if}}">Get AI design request</button>
+    {{/if}}
+  </section>
+
+  <section class="sa-section" data-stage="design" {{#unless designStage}}hidden{{/unless}} aria-labelledby="sa-design-title">
+    <h2 id="sa-design-title" tabindex="-1">Design with your text AI</h2>
+    <p>Give it this request, then paste its complete JSON response below.</p>
+    {{#if assetSummary}}<p class="hint">{{#if automaticAssets}}Matched {{palette.length}} candidates automatically. Your AI chooses the final materials and furnishings.{{else}}Using {{palette.length}} manual asset overrides.{{/if}}</p>{{/if}}
+    <div data-asset-prompt>
+      <label>AI design request <textarea readonly rows="4">{{#if assetMode}}{{assetPrompt}}{{else}}{{intentPrompt}}{{/if}}</textarea></label>
+    </div>
+    <button type="button" data-action="copyPreparedRequest">{{#if assetRepair}}Copy correction request{{else}}Copy request{{/if}}</button>
+    <label>AI response JSON <textarea name="responseText" rows="6" maxlength="1000000" spellcheck="false" aria-invalid="{{#if assetRepair}}true{{else}}false{{/if}}" aria-describedby="sa-response-help" placeholder="Paste the complete JSON response here">{{responseText}}</textarea></label>
+    <p class="hint" id="sa-response-help">{{#if assetRepair}}Your response is still editable. Copy the correction request above if needed.{{else}}Paste the JSON only, without code fences or commentary.{{/if}}</p>
+    <div class="sa-actions">
+      <button type="button" data-action="goDescribe">Edit brief</button>
+      <button type="button" data-action="acceptDesign" class="{{#if designStage}}sa-primary{{/if}}">Validate &amp; preview</button>
+    </div>
+    <p class="hint">Validation and rendering stay local. Nothing is added to your world until you choose Create Scene.</p>
+  </section>
+
+  <section class="sa-section" data-stage="preview" {{#unless previewStage}}hidden{{/unless}} aria-labelledby="sa-preview-title">
+    <h2 id="sa-preview-title" tabindex="-1">{{#if applied}}Scene saved{{else}}Preview your scene{{/if}}</h2>
+    <p>{{planSummary}}</p>
+    {{#each warnings}}<p class="sa-status warning">{{this}}</p>{{/each}}
+    {{#unless built}}
+    <button type="button" data-action="buildPlan" class="{{#if previewStage}}sa-primary{{/if}}" {{#unless hasPlan}}disabled{{/unless}}>Build local preview</button>
+    {{/unless}}
+    {{#unless assetMode}}
+    {{#if built}}
+    <p>Download the reference and give it with the prompt to your image model. Then select the completed image.</p>
+    <button type="button" data-action="handoff" class="{{#if needsHandoff}}sa-primary{{/if}}">Download reference + copy artwork prompt</button>
+    <div data-handoff-text>
+      {{#if handoffPrompt}}<details><summary>Artwork prompt</summary><label>Prompt text <textarea readonly rows="5">{{handoffPrompt}}</textarea></label><button type="button" data-action="downloadPrompt">Download artwork prompt</button></details>{{/if}}
+    </div>
+    <label>Complete artwork image <input name="mapFile" type="file" accept="image/png,image/jpeg,image/webp"></label>
+    <p data-selected-file>{{#if selectedName}}Selected: {{selectedName}}{{else}}Choose a local image, or reuse the saved original.{{/if}}</p>
+    {{#if mapSource}}<p class="sa-path">Original source: {{mapSource}}</p>{{/if}}
+    {{#if legacySource}}<p class="sa-status warning">Legacy source: previous stretch, crop and offset metadata will not be reused.</p>{{/if}}
+    <p class="hint">PNG, JPEG or WebP, up to 30 MB and 40 megapixels. The full-frame aspect ratio must match within 0.2%. Small corrections are disclosed; nothing is cropped.</p>
+    {{/if}}
+    {{/unless}}
+    {{#unless hasPreview}}
+    {{#if built}}<button type="button" data-action="previewArtwork" class="{{#if assetMode}}{{#unless applied}}{{#if previewStage}}sa-primary{{/if}}{{/unless}}{{/if}}">{{#if assetMode}}Render preview{{else}}Preview artwork composite{{/if}}</button>{{/if}}
+    {{/unless}}
+    {{#if aspectCorrection}}<p class="sa-status warning" data-artwork-adjustment role="status">Minor aspect correction: {{aspectCorrection}}%. Full image scaled from {{previewMapping.sourceWidth}} x {{previewMapping.sourceHeight}} to {{previewMapping.width}} x {{previewMapping.height}}. Nothing is cropped; native geometry is unchanged.</p>{{/if}}
+    <div class="sa-artwork-preview"></div>
+    {{#if conflict}}<p class="sa-status warning" role="alert">{{conflict}}</p>{{/if}}
+    {{#if hasPreview}}<p class="hint">Check furnishing scale, wall joins and clear entrances. Door artwork is static; native doors control collision and vision.</p>{{/if}}
+    {{#if applied}}
+    <button type="button" data-action="viewScene" class="{{#if previewStage}}sa-primary{{/if}}">Open Scene for play</button>
+    {{else}}
+    <label class="sa-check"><input type="checkbox" name="artworkReviewed" {{#unless hasPreview}}disabled{{/unless}}>I inspected this preview; entrances and major features are acceptable.</label>
+    <div class="sa-actions sa-wrap">
+      {{#if sceneReady}}
+      <button type="button" data-action="updateScene" data-commit class="{{#if canUpdate}}{{#if previewStage}}sa-primary{{/if}}{{/if}}" {{#unless canUpdate}}disabled{{/unless}}>Update Scene artwork only</button>
+      <button type="button" data-action="createNewScene" data-commit {{#unless hasPreview}}disabled{{/unless}}>Create NEW Scene</button>
+      {{else}}
+      <button type="button" data-action="createScene" data-commit class="{{#if hasPreview}}{{#if previewStage}}sa-primary{{/if}}{{/if}}" {{#unless hasPreview}}disabled{{/unless}}>Create Scene</button>
+      {{/if}}
+    </div>
+    {{/if}}
+    <p class="hint">Saves the exact inspected PNG with native walls, doors and lights. Background updates preserve existing native documents and door states.</p>
+    <div class="sa-actions sa-wrap">
+      <button type="button" data-action="goDescribe">Edit brief</button>
+      {{#if assetRequest}}<button type="button" data-action="goDesign">Edit design JSON</button>{{/if}}
+      {{#if hasPreview}}<button type="button" data-action="cancelPreview">Discard preview</button>{{/if}}
+    </div>
+  </section>
+
+  <details class="sa-section sa-tools">
+    <summary>Projects &amp; advanced tools</summary>
     <details>
       <summary>Saved projects</summary>
       <label>Project <select name="projectId"><option value="">Choose a saved scene</option>{{#each projects}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}</select></label>
       <div class="sa-actions"><button type="button" data-action="reopen">Reopen project</button><button type="button" data-action="newProject">New local project</button></div>
-      <p class="hint">A validated local plan is saved on this client. Local image files are not saved until scene creation/update; reselect unsaved files after closing.</p>
+      <p class="hint">Drafts stay on this client. Saved scenes retain their asset palette; unsaved local artwork must be reselected after closing.</p>
     </details>
-  </header>
-
-  {{#if assetMode}}
-  <section class="sa-section" aria-labelledby="sa-library-title">
-    <h2 id="sa-library-title">Server asset library</h2>
-    <p>Use a folder beneath Foundry Data, such as assets/map-library. No provider-specific structure or subscription is required. Indexing reads filenames and subfolders, not every image.</p>
-    <label>Asset root <input name="assetRoot" value="{{libraryRoot}}" placeholder="assets/map-library"></label>
-    <div class="sa-actions sa-wrap">
-      <button type="button" data-action="indexLibrary">Index folder and save shared catalogue</button>
-      <button type="button" data-action="loadLibrary">Load shared catalogue</button>
-      <button type="button" data-action="cancelIndex">Cancel catalogue operation</button>
-    </div>
-    <p class="hint">The previous catalogue stays usable if indexing fails. Large libraries take time; progress appears above. Index files live in the world's Scene Architect folder, not solely on this client.</p>
-    {{#if catalogueCount}}<p>{{catalogueCount}} indexed images loaded.</p>{{/if}}
-    <label>Find assets <input name="assetSearch" type="search" value="{{searchQuery}}" placeholder="stone floor, walnut desk, lamp"></label>
-    <button type="button" data-action="searchLibrary">Search catalogue</button>
-    <div class="sa-asset-results">
-      {{#each searchResults}}
-      <div class="sa-asset-result">
+    {{#if assetMode}}
+    <details>
+      <summary>Library &amp; manual asset overrides</summary>
+      <p class="hint">Automatic selection is the default. Only use manual overrides to correct a specific asset. Inferred scale is an estimate, not a human review.</p>
+      {{#if assetSummary}}<p class="hint">{{assetSummary}}</p>{{/if}}
+      <div class="sa-actions sa-wrap"><button type="button" data-action="openSetup">Connect or refresh library</button><button type="button" data-action="loadLibrary">Load catalogue for browsing</button><button type="button" data-action="useAutomaticAssets">Use automatic selection</button></div>
+      {{#if catalogueCount}}<p>{{catalogueCount}} indexed images loaded.</p>{{/if}}
+      <label>Find assets <input name="assetSearch" type="search" value="{{searchQuery}}" placeholder="stone floor, desk, lamp"></label>
+      <button type="button" data-action="searchLibrary">Search catalogue</button>
+      <div class="sa-asset-results">
+        {{#each searchResults}}
+        <div class="sa-asset-result"><img src="{{src}}" alt="{{label}}" loading="lazy" decoding="async" width="96" height="96"><p class="sa-path">{{label}}</p><button type="button" data-action="addPaletteAsset" data-id="{{id}}" aria-label="Add {{label}} to palette">Add to palette</button></div>
+        {{/each}}
+      </div>
+      <p class="hint">Materials repeat; walls use horizontal strips. Width includes transparent padding. Editing automatic metadata removes its readiness until you review the override.</p>
+      {{#each palette}}
+      <fieldset class="sa-palette-entry" data-palette-id="{{id}}">
+        <legend>{{label}}</legend>
         <img src="{{src}}" alt="{{label}}" loading="lazy" decoding="async" width="96" height="96">
-        <p class="sa-path">{{label}}</p>
-        <button type="button" data-action="addPaletteAsset" data-id="{{id}}" aria-label="Add {{label}} to palette">Add to palette</button>
-      </div>
-      {{/each}}
-    </div>
-    <h3>Reviewed palette</h3>
-    <p class="hint">Select at most 64 images. Materials are repeating floors or ground; walls must be horizontal strips; props include furniture, lamps and rugs. Filename dimensions are hints only. Width includes all transparent padding; height stays proportional. A wall's center is its normalized vertical anchor (usually 0.5). Changing metadata clears confirmation.</p>
-    {{#each palette}}
-    <fieldset class="sa-palette-entry" data-palette-id="{{id}}">
-      <legend>{{label}}</legend>
-      <img src="{{src}}" alt="{{label}}" loading="lazy" width="96" height="96">
-      <p>{{pixelWidth}} x {{pixelHeight}} pixels; calibrated height {{height}} cells.</p>
-      <div class="sa-grid sa-grid-3">
-        <label>Role <select data-field="kind">{{#each roles}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}</select></label>
-        <label>Full image width (cells) <input data-field="width" type="number" min="0.05" max="100" step="any" value="{{width}}"></label>
-        <label>Wall vertical center (0-1) <input data-field="anchorY" type="number" min="0" max="1" step="0.01" value="{{anchorY}}"></label>
-      </div>
-      <label class="sa-check"><input data-field="confirmed" type="checkbox" {{#if confirmed}}checked{{/if}}>I reviewed this asset's role, scale and wall center.</label>
-      <button type="button" data-action="removePaletteAsset" data-id="{{id}}" aria-label="Remove {{label}} from palette">Remove from palette</button>
-    </fieldset>
-    {{else}}<p>No palette selected. Add at least a material and a wall strip.</p>{{/each}}
-    <button type="button" data-action="applyPalette">Save palette calibration</button>
-    <p class="hint">Calibration is saved with your draft and each created scene. Reopened scenes use their saved palette snapshot, even on another client.</p>
-  </section>
-  {{/if}}
-
-  <section class="sa-section" aria-labelledby="sa-describe-title">
-    <h2 id="sa-describe-title">1. Describe</h2>
-    <div class="sa-grid sa-grid-4">
-      <label>Scene name <input name="sceneName" type="text" value="{{sceneName}}"></label>
-      <label>Columns <input name="columns" type="number" min="4" step="1" value="{{columns}}"></label>
-      <label>Rows <input name="rows" type="number" min="4" step="1" value="{{rows}}"></label>
-      <label>Grid pixels <input name="gridSize" type="number" min="50" step="1" value="{{gridSize}}"></label>
-    </div>
-    <label>Scene description <textarea name="brief" rows="3" placeholder="Rooms, circulation, major features, mood and lighting">{{brief}}</textarea></label>
-    {{#if assetMode}}
-    <p class="hint">Confirm your palette, copy the design request to a text model, then import its complete JSON response. One round trip is the normal path; invalid designs get an explicit correction request. No model API or image generation is used.</p>
-    {{else}}
-    <p class="hint">Copy the design request to a language model, then import its coordinate-free JSON. Or start with the laboratory example. Editing this description does not silently change built geometry.</p>
-    {{/if}}
-    <div class="sa-actions sa-wrap">
-      <button type="button" data-action="copyLayoutPrompt" class="{{#if next.copyLayoutPrompt}}sa-primary{{/if}}">Copy scene design request</button>
-      <button type="button" data-action="pastePlan" class="{{#if next.pastePlan}}sa-primary{{/if}}">Import scene design</button>
-      {{#unless assetMode}}<button type="button" data-action="loadExample">Load laboratory example</button>{{/unless}}
-    </div>
-    {{#if assetMode}}
-    <div data-asset-prompt>{{#if assetPrompt}}<details><summary>Current asset design request</summary><label>Text-model request <textarea readonly rows="8">{{assetPrompt}}</textarea></label></details>{{/if}}</div>
-    {{#if assetRepair}}<p role="alert">Asset design not accepted: {{assetRepair.error}}</p><button type="button" data-action="copyPlanRepairPrompt">Copy asset design correction request</button>{{/if}}
+        <p>{{pixelWidth}} x {{pixelHeight}} pixels; height {{height}} cells. {{#if calibration}}Automatically inferred.{{/if}}</p>
+        <div class="sa-grid sa-grid-3">
+          <label>Role <select data-field="kind">{{#each roles}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>{{/each}}</select></label>
+          <label>Full image width (cells) <input data-field="width" type="number" min="0.05" max="100" step="any" value="{{width}}"></label>
+          <label>Wall vertical center (0-1) <input data-field="anchorY" type="number" min="0" max="1" step="0.01" value="{{anchorY}}"></label>
+        </div>
+        <label class="sa-check"><input data-field="confirmed" type="checkbox" {{#if confirmed}}checked{{/if}}>I reviewed this asset's role, scale and wall center.</label>
+        <button type="button" data-action="removePaletteAsset" data-id="{{id}}" aria-label="Remove {{label}} from palette">Remove from palette</button>
+      </fieldset>
+      {{else}}<p>No overrides. Assets will be selected when you prepare a request.</p>{{/each}}
+      <button type="button" data-action="applyPalette">Use this manual palette</button>
+    </details>
     {{/if}}
     <details>
-      <summary>Advanced: low-level plan import and repair</summary>
-      <p>Import exact coordinates only if needed. Validation is atomic: rejected JSON never replaces a valid plan. Accepted changes start a local project, preserving any saved scene.</p>
-      <div class="sa-actions sa-wrap">
-        <button type="button" data-action="copyLegacyLayoutPrompt">Copy low-level plan request</button>
-        <button type="button" data-action="pastePlan" data-mode="advanced">Import / edit low-level plan</button>
-        {{#if hasPlan}}<button type="button" data-action="downloadPlan">Download plan JSON</button>{{/if}}
-      </div>
-      {{#if planRepair}}<p role="alert">Advanced plan not accepted: {{planRepair.error}}</p><button type="button" data-action="copyPlanRepairPrompt">Copy plan correction request</button><pre>{{planRepair.json}}</pre>{{/if}}
+      <summary>Generated-artwork workflow &amp; low-level plans</summary>
+      <label>Workflow <select name="workflowMode"><option value="assets" {{#if assetMode}}selected{{/if}}>Server assets (recommended)</option><option value="artwork" {{#unless assetMode}}selected{{/unless}}>Generated artwork (legacy)</option></select></label>
+      <button type="button" data-action="switchWorkflow">Start selected workflow</button>
+      {{#unless assetMode}}<button type="button" data-action="loadExample">Load laboratory example</button>{{/unless}}
+      <div class="sa-actions sa-wrap"><button type="button" data-action="copyLegacyLayoutPrompt">Copy low-level plan request</button><button type="button" data-action="pastePlan" data-mode="advanced">Import / edit low-level plan</button><button type="button" data-action="downloadPlan" {{#unless hasPlan}}disabled{{/unless}}>Download plan JSON</button></div>
+      {{#if planRepair}}<p role="alert">{{planRepair.error}}</p><button type="button" data-action="copyPlanRepairPrompt">Copy plan correction request</button><pre>{{planRepair.json}}</pre>{{/if}}
       {{#if hasPlan}}<pre>{{planJson}}</pre>{{/if}}
     </details>
-  </section>
-
-  <section class="sa-section" aria-labelledby="sa-build-title">
-    <h2 id="sa-build-title">2. Build</h2>
-    <p>{{#if hasPlan}}{{planSummary}}{{else}}Import a design to construct deterministic rooms, passages and major feature regions.{{/if}}</p>
-    <button type="button" data-action="buildPlan" class="{{#if next.buildPlan}}sa-primary{{/if}}" {{#unless hasPlan}}disabled{{/unless}}>Build local preview</button>
-    <p class="hint">No Foundry scene is created here. Walls, interactive doors and light positions come only from this plan.</p>
-    {{#each warnings}}<p class="sa-status warning">{{this}}</p>{{/each}}
-    <div class="sa-plan-preview"></div>
     {{#if hasPlan}}
     <details>
-      <summary>Advanced rendering controls</summary>
-      <p>These affect structural appearance, not native geometry. Changing them invalidates the handoff and artwork preview.</p>
+      <summary>Rendering &amp; diagnostics</summary>
       <div class="sa-grid sa-grid-3">
         <label>Structural material <select name="material" data-rendering><option value="{{settings.material}}" selected>{{settings.material}} (current)</option><option value="stone">Stone</option><option value="wood">Wood</option><option value="metal">Metal</option></select></label>
         <label>Wall width (cells) <input name="wallWidth" data-rendering type="number" min="0.08" max="0.35" step="0.01" value="{{settings.wallWidth}}"></label>
-        <label>Protected band padding (cells) <input name="bandPadding" data-rendering type="number" min="0.1" max="0.65" step="0.01" value="{{settings.bandPadding}}"></label>
+        <label>Protected padding (cells) <input name="bandPadding" data-rendering type="number" min="0.1" max="0.65" step="0.01" value="{{settings.bandPadding}}"></label>
       </div>
       <button type="button" data-action="applyRendering">Apply rendering settings</button>
+      <div class="sa-plan-preview"></div>
+      <label>Diagnostic view <select name="diagnosticView"><option value="geometry">Geometry only</option><option value="protected">Protected structural mask</option><option value="anchors">Major-anchor mask</option><option value="source">Original source</option><option value="composite">Composite</option></select></label>
+      <button type="button" data-action="showDiagnostic">Show diagnostic</button>
+      <div class="sa-diagnostic-preview"></div>
     </details>
     {{/if}}
-  </section>
-
-  <section class="sa-section" aria-labelledby="sa-generate-title">
-    {{#if assetMode}}
-    <h2 id="sa-generate-title">3. Server assets</h2>
-    <p>The validated plan uses the reviewed palette. Images are loaded directly from Foundry; native walls, openings and lighting remain authoritative. No diffusion handoff is needed.</p>
-    {{else}}
-    <h2 id="sa-generate-title">3. Generate Artwork</h2>
-    <p>One handoff action downloads the reference PNG and copies its prompt. Attach the PNG and prompt to your preferred multimodal image model. No model account or API is connected here.</p>
-    <button type="button" data-action="handoff" class="{{#if next.handoff}}sa-primary{{/if}}" {{#unless built}}disabled{{/unless}}>Download reference + copy artwork prompt</button>
-    <div data-handoff-text>
-      {{#if handoffPrompt}}<details open><summary>Artwork prompt — also available if clipboard access failed</summary><label>Prompt text <textarea readonly rows="8">{{handoffPrompt}}</textarea></label><button type="button" data-action="downloadPrompt">Download artwork prompt</button></details>{{/if}}
-    </div>
-    {{/if}}
-  </section>
-
-  <section class="sa-section" aria-labelledby="sa-import-title">
-    {{#if assetMode}}
-    <h2 id="sa-import-title">4. Render and inspect</h2>
-    <p>Render floors, wall strips and furniture from the saved asset plan. Inspect scale, wall joins, door clearance and furnishing. Missing or changed-size assets are errors, not placeholders. Door thresholds are static; native door state controls collision and vision.</p>
-    {{else}}
-    <h2 id="sa-import-title">4. Import Artwork</h2>
-    <label>Complete artwork image <input name="mapFile" type="file" accept="image/png,image/jpeg,image/webp" {{#unless built}}disabled{{/unless}}></label>
-    <p data-selected-file>{{#if selectedName}}Selected: {{selectedName}}{{else}}No local file selected; saved original source will be used if available.{{/if}}</p>
-    {{#if mapSource}}<p class="sa-path">Original source: {{mapSource}}</p>{{/if}}
-    {{#if legacySource}}<p class="sa-status warning">Legacy source: old stretch, crop and offset metadata will not be reused. This original image must pass the new full-frame aspect-ratio check.</p>{{/if}}
-    <p class="hint">PNG, JPEG or WebP, up to 30 MB and 40 megapixels. Another resolution with the reference aspect ratio is accepted. Near matches within 0.2% receive a small proportional correction, disclosed in the preview; larger differences are rejected. Nothing is cropped. Protected bands are replaced; native geometry never follows pixels.</p>
-    {{/if}}
-    <div class="sa-actions"><button type="button" data-action="previewArtwork" class="{{#if next.previewArtwork}}sa-primary{{/if}}" {{#unless built}}disabled{{/unless}}>{{#if assetMode}}Render server assets{{else}}Preview artwork composite{{/if}}</button><button type="button" data-action="cancelPreview" {{#unless hasPreview}}disabled{{/unless}}>Cancel preview</button></div>
-    {{#if aspectCorrection}}<p class="sa-status warning" data-artwork-adjustment role="status">Minor aspect correction: {{aspectCorrection}}%. The full image is scaled from {{previewMapping.sourceWidth}} x {{previewMapping.sourceHeight}} to {{previewMapping.width}} x {{previewMapping.height}} with slightly different horizontal and vertical scaling. Nothing is cropped; native geometry is unchanged. Inspect the composite before saving.</p>{{/if}}
-    <div class="sa-artwork-preview"></div>
-  </section>
-
-  <section class="sa-section" aria-labelledby="sa-create-title">
-    <h2 id="sa-create-title">5. Create / Update Scene</h2>
-    {{#if conflict}}<p class="sa-status warning" role="alert">{{conflict}}</p>{{/if}}
-    <label class="sa-check"><input type="checkbox" name="artworkReviewed" {{#unless hasPreview}}disabled{{/unless}}>I inspected this exact composite: entrances are clear and major features are acceptable.</label>
-    <div class="sa-actions sa-wrap">
-      {{#if sceneReady}}
-      <button type="button" data-action="updateScene" data-commit class="{{#if next.updateScene}}sa-primary{{/if}}" {{#unless canUpdate}}disabled{{/unless}}>Update Scene artwork only</button>
-      <button type="button" data-action="createNewScene" data-commit class="{{#if next.createNewScene}}sa-primary{{/if}}" {{#unless hasPreview}}disabled{{/unless}}>Create NEW Scene from original plan</button>
-      {{else}}
-      <button type="button" data-action="createScene" data-commit class="{{#if next.createScene}}sa-primary{{/if}}" {{#unless hasPreview}}disabled{{/unless}}>Create Scene</button>
-      {{/if}}
-    </div>
-    <p class="hint">{{#if assetMode}}The exact preview PNG is uploaded and the calibrated asset plan is saved with the scene.{{else}}Source and exact preview PNG are uploaded before scene creation.{{/if}} Updating replaces only the background; door states, native lights, walls and user content remain unchanged.</p>
-  </section>
-
-  <section class="sa-section" aria-labelledby="sa-play-title">
-    <h2 id="sa-play-title">6. Play</h2>
-    <button type="button" data-action="viewScene" class="{{#if next.viewScene}}sa-primary{{/if}}" {{#unless sceneReady}}disabled{{/unless}}>Open Scene for play</button>
-    <p>In Foundry, test token vision, door interactions, wall occlusion and lighting. Artwork quality and major-feature placement still require your judgement.</p>
-  </section>
-  {{#if hasPlan}}
-  <details class="sa-section">
-    <summary>Optional diagnostics — one view at a time</summary>
-    <label>Diagnostic view <select name="diagnosticView"><option value="geometry">Geometry only</option><option value="protected">Protected structural mask</option><option value="anchors">Major-anchor mask</option><option value="source">Original source</option><option value="composite">Composite</option></select></label>
-    <button type="button" data-action="showDiagnostic">Show diagnostic</button>
-    <p class="hint">Diagnostics do not alter the clean primary preview. No combined wall/light overlay is used.</p>
-    <div class="sa-diagnostic-preview"></div>
   </details>
-  {{/if}}
 </div>

@@ -10,12 +10,13 @@ import {projectFromScene} from '../scripts/project.js';
 import {applyDocumentUpdate} from './mock-update.js';
 import {checkComposition,checkStructuralVariants} from './composition-browser.js';
 import {checkAssetWorkflow} from './asset-browser-checks.js';
+import {checkGuidedWorkflow} from './guided-workflow-checks.js';
 
 const results=[],assert=(truth,message)=>{if(!truth)throw new Error(message);results.push(message);};
 const pixel=(canvas,x,y)=>[...canvas.getContext('2d').getImageData(x,y,1,1).data];
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const output=async(name,blob)=>{const response=await fetch('/output/'+name,{method:'POST',body:blob});if(!response.ok)throw new Error('Output failed: '+name);};
-const rejects=async(fn,pattern,message)=>{let caught;try {await fn();}catch(error){caught=error;}assert(caught&&pattern.test(caught.message),`${message}${caught?'':': expected rejection'}`);};
+const rejects=async(fn,pattern,message)=>{let caught;try {await fn();}catch(error){caught=error;}const matches=caught&&pattern.test(caught.message);assert(matches,`${message}${matches?'':`: ${caught?.message??'expected rejection'}`}`);};
 let priorArtwork={status:'not-checked',scope:'Earlier five-room laboratory artwork only; not new six-room/three-scene validation or visual acceptance.'};
 const fixture=await (await fetch('/fixtures/laboratory.json')).json();
 const fullCrop={x:0,y:0,width:1,height:1},images=new Map();
@@ -140,9 +141,12 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   }
   document.addEventListener('click',e=>{const link=e.target.closest('a[download]');if(link){e.preventDefault();downloads.push({name:link.download,href:link.href});}});
   globalThis.foundry={applications:{api:{ApplicationV2:App,HandlebarsApplicationMixin:x=>x,DialogV2:{
-    confirm:async()=>confirm,input:async()=>dialogValue}},apps:{FilePicker:{
-      createDirectory:async()=>{},browse:async()=>({}),
-      upload:async(_source,_dir,file)=>{
+    confirm:async()=>confirm,input:async()=>dialogValue}},apps:{FilePicker:class {
+      constructor(options){this.options=options;}
+      async render(){faults.pickerOptions=this.options;this.options.callback(faults.folderSelection??'output');return this;}
+      static async createDirectory(){}
+      static async browse(){return {};}
+      static async upload(_source,_dir,file){
         if(faults.upload){faults.upload=false;throw new Error('Injected upload failure');}
         uploads.push(file);await output(file.name,file);
         if(faults.afterUpload){const callback=faults.afterUpload;delete faults.afterUpload;callback();}
@@ -263,7 +267,9 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   assert(!near.element.querySelector('[data-artwork-adjustment]'),'Changing artwork removes the stale aspect-correction notice');
   await near.previewArtwork();
   assert(!near.element.querySelector('[data-artwork-adjustment]'),'Exact-aspect artwork does not show a correction notice');
-  const stale=await ready();await select(stale,new File([file],'unseen.png',{type:'image/png'}));
+  const stale=await ready();
+  assert([...stale.element.querySelectorAll('.sa-primary')].filter(b=>b.checkVisibility()).length===1,'A legacy preview exposes one primary action even without a generated handoff');
+  await select(stale,new File([file],'unseen.png',{type:'image/png'}));
   await rejects(()=>stale.createScene(),/Preview/, 'Changing the file invalidates the pending preview');
   await stale.previewArtwork();review(stale);
   const width=stale.element.querySelector('[name="wallWidth"]');width.value='.25';width.dispatchEvent(new Event('input',{bubbles:true}));
@@ -277,7 +283,7 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   assert(restored.plan&&!restored.preview&&!restored.selectedFile&&restored.status.includes('reselect'),'Closing and reopening restores geometry, not unsaved images or preview approval');
   assert(!/blob:|data:image/.test(settings.get('localDraft')),'Local settings never contain image data or object URLs');
   const imported=await ready(),oldPlan=imported.plan,oldPreview=imported.preview;
-  dialogValue={json:JSON.stringify(fixture)};await rejects(()=>imported.pastePlan(),/scene-intent/, 'Semantic import rejects low-level JSON');
+  imported.element.querySelector('[name="responseText"]').value=JSON.stringify(fixture);await rejects(()=>imported.pastePlan(),/scene-intent/, 'Semantic import rejects low-level JSON');
   assert(imported.plan===oldPlan&&imported.preview===oldPreview&&!imported.workflow.planRepair,'Semantic rejection is atomic, preserving valid plan and pending preview');
   dialogValue={json:'not JSON'};await rejects(()=>imported.pastePlan({dataset:{mode:'advanced'}}),/JSON/, 'Advanced invalid JSON enters bounded repair guidance');
   assert(imported.plan===oldPlan&&imported.workflow.planRepair?.json==='not JSON','Advanced rejection preserves plan and retains rejected input for repair');
@@ -386,6 +392,7 @@ ${syntheticSections}<section id="prior"><h2>Optional earlier five-room artwork â
   assert(notices.at(-1).includes('Inspect')&&final.element.querySelector('[data-status]').textContent.includes('Inspect'),'Action errors are notified, logged and exposed as live status');
   final.status='Synthetic verification preview only. No generated-art quality or live Foundry behaviour has been verified.';await final.render();
   await checkAssetWorkflow({assert,rejects,SceneArchitectApp,settings,scenes,uploads,review,output,setDialog:value=>dialogValue=value});
+  await checkGuidedWorkflow({assert,rejects,SceneArchitectApp,settings,scenes,uploads,output,faults});
   document.querySelector('#check-summary').textContent=`PASS â€” ${results.length} browser checks (expand details)`;
   document.querySelector('#results').textContent=`PASS â€” ${results.length} checks\n`+results.join('\n');
   await output('browser-results.json',JSON.stringify({passed:results.length,checks:results,priorArtwork,limitations:['Foundry host APIs mocked; real v14 document/vision check still required.','The three v2 samples are synthetic, not model-generated artwork or evidence of visual success.','Optional prior artwork is earlier five-room evidence only, not visual acceptance or new six-room/three-scene validation.','Accessibility checks cover control semantics; no assistive-technology audit performed.']}));

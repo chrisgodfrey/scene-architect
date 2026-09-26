@@ -12,6 +12,7 @@ import {analysisPrompt} from './image-geometry.js';
 import {buildCatalogue,searchCatalogue,saveCatalogue,loadCatalogue,normalizeAssetPath} from './asset-catalogue.js';
 import {validatePalette,validateAssetPlan,createAssetRequest,validateAssetRequest,assetDesignPrompt,importAssetResponse} from './asset-plan.js';
 import {renderAssetScene} from './asset-renderer.js';
+import {prepareAssetPalette} from './asset-discovery.js';
 
 export {buildSceneIntentPrompt};
 const MODULE_ID='scene-architect', MODULE_TITLE='Scene Architect', DRAFT_SETTING='localDraft';
@@ -19,7 +20,7 @@ const {ApplicationV2, HandlebarsApplicationMixin, DialogV2}=foundry.applications
 const FilePickerV14=foundry.applications.apps.FilePicker;
 const esc=(s='')=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const slugify=s=>String(s||'scene').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'scene';
-const blankWorkflow=()=>({sceneName:'New Scene',columns:40,rows:32,gridSize:70,brief:'',mode:'assets',palette:[],assetRequest:null,assetRepair:null,plan:null,built:false,planRepair:null,sceneId:null,revision:null,map:null,generation:null});
+const blankWorkflow=()=>({sceneName:'New Scene',columns:40,rows:32,gridSize:70,brief:'',mode:'assets',assetSelection:'automatic',assetSummary:'',responseText:'',palette:[],assetRequest:null,assetRepair:null,plan:null,built:false,planRepair:null,sceneId:null,revision:null,map:null,generation:null});
 
 function downloadBlob(filename,blob) {
   const url=URL.createObjectURL(blob),a=document.createElement('a');
@@ -31,11 +32,11 @@ async function downloadText(filename,text,type='text/plain;charset=utf-8') {
   if(typeof save==='function')await save(text,type,filename);
   else downloadBlob(filename,new Blob([text],{type}));
 }
-async function copyText(text) {
+async function copyText(text,{inline=false}={}) {
   try {await navigator.clipboard.writeText(text);return true;}
   catch(error) {
     console.warn(`${MODULE_ID} | Clipboard failed`,error);
-    await DialogV2.input({window:{title:'Copy text manually'},content:`<textarea name="text" aria-label="Text to copy" style="width:100%;height:420px">${esc(text)}</textarea>`,ok:{label:'Close'}});
+    if(!inline)await DialogV2.input({window:{title:'Copy text manually'},content:`<textarea name="text" aria-label="Text to copy" style="width:100%;height:420px">${esc(text)}</textarea>`,ok:{label:'Close'}});
     return false;
   }
 }
@@ -118,7 +119,10 @@ function validatedWorkflow(value) {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid local workflow.');
   const workflow=blankWorkflow();
   for(const key of Object.keys(workflow))if(Object.hasOwn(value,key))workflow[key]=structuredClone(value[key]);
-  for(const key of ['sceneName','brief'])if(typeof workflow[key]!=='string')throw new Error(`Invalid local ${key}.`);
+  for(const key of ['sceneName','brief','assetSummary','responseText'])if(typeof workflow[key]!=='string')throw new Error(`Invalid local ${key}.`);
+  if(workflow.responseText.length>1_000_000)throw new Error('Paste JSON text up to 1 MB.');
+  if(!['automatic','manual'].includes(workflow.assetSelection))throw new Error('Invalid asset selection mode.');
+  if(value.assetSelection===undefined&&value.palette?.length)workflow.assetSelection='manual';
   for(const key of ['columns','rows','gridSize'])if(!Number.isInteger(workflow[key])||workflow[key]<(key==='gridSize'?50:4))throw new Error(`Invalid local ${key}.`);
   for(const key of ['sceneId','revision'])if(workflow[key]!==null&&typeof workflow[key]!=='string')throw new Error(`Invalid local ${key}.`);
   if(typeof workflow.built!=='boolean')throw new Error('Invalid local build state.');
@@ -138,35 +142,67 @@ function validatedWorkflow(value) {
 
 export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS={
-    id:'scene-architect-app',classes:['scene-architect'],tag:'div',position:{width:840,height:880},
-    window:{title:'Scene Architect — architecture first',icon:'fa-solid fa-drafting-compass',resizable:true},
-    actions:Object.fromEntries(['switchWorkflow','indexLibrary','cancelIndex','loadLibrary','searchLibrary','addPaletteAsset','removePaletteAsset','applyPalette','copyLayoutPrompt','copyLegacyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildPlan','handoff','downloadPrompt','downloadPlan','previewArtwork','cancelPreview','createScene','createNewScene','updateScene','viewScene','reopen','newProject','applyRendering','showDiagnostic'].map(name=>[name,async function(_event,target){await this.run(name,target);}]))
+    id:'scene-architect-app',classes:['scene-architect'],tag:'div',position:{width:760,height:760},
+    window:{title:'Scene Architect',icon:'fa-solid fa-drafting-compass',resizable:true},
+    actions:Object.fromEntries(['goDescribe','goDesign','openSetup','chooseAssetRoot','useAutomaticAssets','copyPreparedRequest','acceptDesign','switchWorkflow','indexLibrary','cancelIndex','loadLibrary','searchLibrary','addPaletteAsset','removePaletteAsset','applyPalette','copyLayoutPrompt','copyLegacyLayoutPrompt','copyPlanRepairPrompt','pastePlan','loadExample','buildPlan','handoff','downloadPrompt','downloadPlan','previewArtwork','cancelPreview','createScene','createNewScene','updateScene','viewScene','reopen','newProject','applyRendering','showDiagnostic'].map(name=>[name,async function(_event,target){await this.run(name,target);}]))
   };
   static PARTS={main:{template:`modules/${MODULE_ID}/templates/scene-architect.hbs`}};
 
   constructor(options={}) {
-    super(options);this.workflow=blankWorkflow();this.busy=false;this.epoch=0;this.selectedFile=null;this.preview=null;this.localSave=Promise.resolve();this.status='';
+    super(options);this.workflow=blankWorkflow();this.busy=false;this.epoch=0;this.inputRevision=0;this.selectedFile=null;this.preview=null;this.localSave=Promise.resolve();this.status='';this.error='';this.closed=false;
     try {
       const saved=game.settings.get(MODULE_ID,DRAFT_SETTING);
       if(saved) {
         const draft=JSON.parse(saved);
         if(draft.version!==1||!draft.workflow)throw new Error('Unsupported local draft version.');
         this.workflow=validatedWorkflow(draft.workflow);
-        this.status=draft.reselect?'Local plan restored. The unsaved local image was not retained; reselect it and preview again.':'Local plan restored. Preview artwork again before creating or updating.';
+        this.status=draft.reselect?'Draft restored; reselect the unsaved image and preview again.':this.plan?'Project restored. Preview again before saving.':'Your local draft is restored.';
       }
     } catch(error) {this.report(error,'Restore local draft');}
   }
   report(error,action) {
-    console.error(`${MODULE_ID} | ${action}`,error);this.status=error.message;ui.notifications.error(`${MODULE_TITLE}: ${error.message}`);
+    console.error(`${MODULE_ID} | ${action}`,error);this.status=error.message;this.error=error.message;ui.notifications.error(`${MODULE_TITLE}: ${error.message}`);
   }
   async run(name,target) {
     if(!game.user.isGM){this.report(new Error('Scene Architect is GM-only.'),name);return;}
     if(name==='cancelIndex'){this.indexController?.abort();return;}
     if(this.busy)return;
-    this.busy=true;this.element?.setAttribute('aria-busy','true');
+    this.busy=true;this.error='';
+    const status=this.element?.querySelector('[data-status]');status?.setAttribute('role','status');status?.setAttribute('aria-live','polite');
+    this.syncBusyControls();
     try {await this[name](target);}
-    catch(error) {this.report(error,name);const status=this.element?.querySelector('[data-status]');if(status)status.textContent=this.status;}
-    finally {this.busy=false;this.element?.removeAttribute('aria-busy');}
+    catch(error) {
+      if(error.name==='AbortError'&&['copyLayoutPrompt','indexLibrary','loadLibrary'].includes(name)) {
+        this.status='Preparation cancelled. No new request was created; the previous catalogue is retained.';
+        const status=this.element?.querySelector('[data-status]');if(status)status.textContent=this.status;
+      } else {
+        this.report(error,name);const status=this.element?.querySelector('[data-status]');
+        if(status){status.setAttribute('role','alert');status.setAttribute('aria-live','assertive');status.textContent=this.status;}
+      }
+    }
+    finally {this.busy=false;this.syncBusyControls();}
+  }
+  syncBusyControls() {
+    for(const stage of this.element?.querySelectorAll('[data-stage]')??[]) {
+      if(this.busy&&!stage.hidden)stage.setAttribute('aria-busy','true');else stage.removeAttribute('aria-busy');
+    }
+    for(const button of this.element?.querySelectorAll('[data-action]')??[]) {
+      if(button.dataset.action==='cancelIndex'){button.hidden=!this.indexController;continue;}
+      if(this.busy&&!button.disabled){button.dataset.busyDisabled='true';button.disabled=true;}
+      else if(!this.busy&&button.dataset.busyDisabled){button.disabled=button.hasAttribute('data-commit')&&!this.preview;delete button.dataset.busyDisabled;}
+    }
+  }
+  async changeStage(stage,focus) {
+    this.stage=stage;this.focusTarget=focus??`[data-stage="${stage}"] h2`;await this.render();
+  }
+  async goDescribe() {await this.changeStage('describe','[name="brief"]');}
+  async goDesign() {await this.changeStage('design','[name="responseText"]');}
+  async openSetup() {this.setupOpen=true;await this.changeStage('describe','[name="assetRoot"]');}
+  async chooseAssetRoot() {
+    const picker=new FilePickerV14({type:'folder',current:this.element.querySelector('[name="assetRoot"]').value,callback:path=>{
+      if(!this.closed){const input=this.element?.querySelector('[name="assetRoot"]');if(input){input.value=path;input.focus();}}
+    }});
+    await picker.render({force:true});
   }
   get scene() {return game.scenes.get(this.workflow.sceneId);}
   get plan() {return this.workflow.plan;}
@@ -184,6 +220,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     const plan=checkedPlan(raw);
     this.clearPending();
     this.workflow={...blankWorkflow(),mode:plan.assetScene?'assets':'artwork',palette:structuredClone(plan.assetScene?.palette??[]),plan,sceneName:plan.scene.name,columns:plan.scene.columns,rows:plan.scene.rows,gridSize:plan.scene.gridSize,brief:plan.scene.description};
+    this.stage='preview';
   }
   async persistLocal() {
     const workflow=validatedWorkflow(this.workflow);
@@ -191,39 +228,46 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.localSave=this.localSave.catch(error=>console.error(`${MODULE_ID} | Previous local save failed`,error)).then(()=>game.settings.set(MODULE_ID,DRAFT_SETTING,value));
     await this.localSave;
   }
-  async close(options) {this.indexController?.abort();await this.persistLocal();this.clearPending();return super.close(options);}
+  async close(options) {this.closed=true;this.inputRevision++;this.indexController?.abort();await this.persistLocal();this.clearPending();return super.close(options);}
   async _prepareContext() {
     const p=this.plan,scene=this.scene,mapping=this.preview?.mapping;
     let conflict='';
     if(scene&&p)try {this.assertUpdateTarget();}catch(error){conflict=error.message;}
     const applied=scene&&!conflict&&!this.selectedFile&&!this.renderingDirty&&this.workflow.map?.architectureVersion===1&&JSON.stringify(this.workflow.map.rendering)===JSON.stringify(p?.rendering);
-    const stage=applied&&!this.preview?6:this.preview?5:this.workflow.generation?4:this.workflow.built?3:p?2:1;
+    const stage=this.stage??(p?'preview':this.workflow.assetRequest||this.workflow.intentPromptCopiedAt?'design':'describe');
     const assets=this.workflow.mode==='assets';
-    const next=this.preview?(scene&&!conflict?'updateScene':scene?'createNewScene':'createScene'):this.workflow.built?(assets||this.workflow.generation?'previewArtwork':'handoff'):p?'buildPlan':this.workflow.intentPromptCopiedAt?'pastePlan':'copyLayoutPrompt';
-    return {...this.workflow,assetMode:assets,assetPlan:!!p?.assetScene,libraryRoot:game.settings.get(MODULE_ID,'assetRoot')??'',catalogueCount:this.catalogue?.entries.length,searchQuery:this.searchQuery??'',searchResults:this.searchResults??[],
+    return {...this.workflow,assetMode:assets,assetPlan:!!p?.assetScene,automaticAssets:this.workflow.assetSelection==='automatic',setupOpen:!!this.setupOpen,
+      libraryConnected:!!game.settings.get(MODULE_ID,'assetCatalogue'),libraryRoot:game.settings.get(MODULE_ID,'assetRoot')??'',catalogueCount:this.catalogue?.entries.length,searchQuery:this.searchQuery??'',searchResults:this.searchResults??[],
       palette:this.workflow.palette.map(a=>({...a,roles:['material','wall','prop'].map(value=>({value,selected:a.kind===value}))})),
-      assetPrompt:this.workflow.assetRequest?assetDesignPrompt(this.workflow.assetRequest):'',
+      assetPrompt:this.workflow.assetRequest?assetDesignPrompt(this.workflow.assetRequest,this.workflow.assetRepair):'',
+      intentPrompt:!assets&&this.workflow.intentPromptCopiedAt?buildSceneIntentPrompt({...this.workflow,animations:lightAnimationKeys()}):'',
       hasPlan:!!p,sceneReady:!!scene,conflict,partialScene:this.partialScene,
-      next:{[stage===6?'viewScene':next]:true},steps:(assets?['Describe','Build','Server assets','Inspect render','Create / Update','Play']:['Describe','Build','Generate Artwork','Import Artwork','Create / Update','Play']).map((label,i)=>({number:i+1,label,current:i+1===stage,complete:i+1<stage})),
+      describeStage:stage==='describe',designStage:stage==='design',previewStage:stage==='preview',applied:!!applied&&!this.preview,
+      needsHandoff:!assets&&stage==='preview'&&this.workflow.built&&!this.workflow.generation&&!this.preview&&!applied,
+      steps:['Describe','Design','Preview & create'].map((label,i)=>({number:i+1,label,current:['describe','design','preview'][i]===stage})),
       settings:p?architectureSettings(p.rendering):null,hasPreview:!!this.preview,canUpdate:!!scene&&!conflict&&!!this.preview,
-      status:this.status,selectedName:this.selectedFile?.name,mapSource:this.workflow.map?.src,
+      status:this.status,error:this.error,selectedName:this.selectedFile?.name,mapSource:this.workflow.map?.src,
       previewMapping:mapping,aspectCorrection:mapping&&mapping.scaleX!==mapping.scaleY?(Math.abs(mapping.scaleY/mapping.scaleX-1)*100).toPrecision(3):null,
       legacySource:!!this.workflow.map?.src&&this.workflow.map.architectureVersion!==1,
       handoffPrompt:this.workflow.generation?renderHandoffPrompt(p):'',planJson:p?JSON.stringify(p,null,2):'',
-      warnings:p?planWarnings(p):[],planSummary:p?`${p.spaces.length} rooms · ${p.features.length} major features · ${p.lights.length} native lights`:'',
+      warnings:p?planWarnings(p):[],planSummary:p?[[p.spaces.length,'room'],[p.features.length,'major feature'],[p.lights.length,'native light']].map(([count,label])=>`${count} ${label}${count===1?'':'s'}`).join(' · '):'',
       projects:[...game.scenes].filter(s=>s.getFlag(MODULE_ID,'plan')).map(s=>({id:s.id,name:s.name,selected:s.id===scene?.id}))};
   }
   async _onRender(context,options) {
     await super._onRender?.(context,options);
     const root=this.element;
-    if(this.workflow.mode==='assets')for(const name of ['sceneName','columns','rows','gridSize','brief'])
+    for(const name of ['sceneName','columns','rows','gridSize','brief'])
       root.querySelector(`[name="${name}"]`)?.addEventListener('input',()=>{
-        Object.assign(this.workflow,readForm(this));this.workflow.assetRequest=null;this.workflow.assetRepair=null;
-        this.invalidate('Design inputs changed. Copy a fresh design request to use them.');
+        this.inputRevision++;Object.assign(this.workflow,readForm(this));this.workflow.assetRequest=null;this.workflow.assetRepair=null;
+        this.invalidate(this.plan?'Brief changed. Get a fresh design request to replace this plan.':'');
         root.querySelector('[data-asset-prompt]')?.replaceChildren();
       });
+    root.querySelector('[name="responseText"]')?.addEventListener('input',event=>{this.workflow.responseText=event.target.value;});
     for(const input of root.querySelectorAll('[data-palette-id] input, [data-palette-id] select'))input.addEventListener('input',()=>{
-      if(input.dataset.field!=='confirmed')input.closest('[data-palette-id]').querySelector('[data-field="confirmed"]').checked=false;
+      const card=input.closest('[data-palette-id]');
+      if(input.dataset.field!=='confirmed')card.querySelector('[data-field="confirmed"]').checked=false;
+      const entry=this.workflow.palette.find(a=>a.id===card.dataset.paletteId);if(entry)delete entry.calibration;
+      this.inputRevision++;
       this.workflow.assetRequest=null;this.workflow.assetRepair=null;this.invalidate('Palette edited. Apply and confirm metadata, then copy a fresh design request.');
       root.querySelector('[data-asset-prompt]')?.replaceChildren();
     });
@@ -238,23 +282,29 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     });
     if(this.workflow.built&&this.plan)root.querySelector('.sa-plan-preview')?.replaceChildren(this.labelCanvas(renderArchitecturalPreview(this.plan),'Clean deterministic architecture preview'));
     if(this.preview)root.querySelector('.sa-artwork-preview')?.replaceChildren(this.labelCanvas(this.preview.canvas,'Exact composited artwork to be saved'));
+    this.syncBusyControls();
+    if(this.focusTarget){root.querySelector(this.focusTarget)?.focus();this.focusTarget=null;}
   }
   labelCanvas(canvas,label) {canvas.setAttribute('role','img');canvas.setAttribute('aria-label',label);return canvas;}
   async switchWorkflow() {
     const mode=this.element.querySelector('[name="workflowMode"]').value;
     if(mode===this.workflow.mode)return;
     if(!await DialogV2.confirm({window:{title:'Start a new local workflow?'},content:'<p>Replace this local draft? Saved scenes are preserved.</p>',rejectClose:false}))return;
-    this.clearPending();this.workflow={...blankWorkflow(),mode};await this.persistLocal();await this.render();
+    this.clearPending();this.workflow={...blankWorkflow(),mode};await this.persistLocal();await this.changeStage('describe');
   }
   libraryProgress(progress) {
-    this.status=`Asset catalogue: ${typeof progress==='string'?progress:JSON.stringify(progress)}`;
+    if(typeof progress==='string')this.status=progress;
+    else if(progress.phase==='prepare')this.status=`Matching assets: ${progress.count} checked, ${progress.ready} usable.`;
+    else if(progress.phase==='scan')this.status=`Indexing library: ${progress.files} images in ${progress.directories} folders.`;
+    else this.status=`${progress.phase==='save'?'Saving':'Loading'} catalogue: ${progress.count} of ${progress.total} images.`;
     const node=this.element?.querySelector('[data-status]');if(node)node.textContent=this.status;
+    this.syncBusyControls();
   }
   async indexLibrary() {
     const value=this.element.querySelector('[name="assetRoot"]').value.trim();
     if(!value)throw new Error('Choose an asset folder beneath Foundry Data before indexing.');
     const root=normalizeAssetPath(value);
-    const controller=new AbortController();this.indexController=controller;
+    const controller=new AbortController();this.indexController=controller;this.syncBusyControls();
     try {
       const catalogue=await buildCatalogue(root,{browse:path=>FilePickerV14.browse('data',path),signal:controller.signal,onProgress:p=>this.libraryProgress(p)});
       const saved=await saveCatalogue(catalogue,{signal:controller.signal,onProgress:p=>this.libraryProgress(p),
@@ -263,22 +313,22 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       await game.settings.set(MODULE_ID,'assetRoot',root);
       controller.signal.throwIfAborted();
       await game.settings.set(MODULE_ID,'assetCatalogue',saved.path);
-      this.catalogue=catalogue;this.searchResults=searchCatalogue(catalogue,'');
-      this.status=`Indexed ${catalogue.entries.length} images. Catalogue saved on the server; review palette metadata before use.`;
-      await this.render();
-    } finally {if(this.indexController===controller)this.indexController=null;}
+      this.catalogue=catalogue;this.cataloguePath=saved.path;this.searchResults=searchCatalogue(catalogue,'');
+      this.setupOpen=false;this.status=`Library connected: ${catalogue.entries.length} images. Assets will be chosen automatically for your brief.`;
+      await this.changeStage('describe');
+    } finally {if(this.indexController===controller){this.indexController=null;this.syncBusyControls();}}
   }
-  async loadLibrary() {
+  async loadLibrary({quiet=false}={}) {
     const path=game.settings.get(MODULE_ID,'assetCatalogue');
-    if(!path)throw new Error('Index a server folder first.');
-    const controller=new AbortController();this.indexController=controller;
+    if(!path)throw new Error('Connect an asset library first.');
+    const controller=new AbortController();this.indexController=controller;this.syncBusyControls();
     try {
       const catalogue=await loadCatalogue(path,{signal:controller.signal,onProgress:p=>this.libraryProgress(p),fetchJson:async src=>{
         const response=await fetch(src,{signal:controller.signal});if(!response.ok)throw new Error(`Catalogue load failed: HTTP ${response.status}.`);return response.json();
       }});
-      controller.signal.throwIfAborted();this.catalogue=catalogue;this.searchResults=searchCatalogue(catalogue,'');
-      this.status=`Loaded ${catalogue.entries.length} shared catalogue entries.`;await this.render();
-    } finally {if(this.indexController===controller)this.indexController=null;}
+      controller.signal.throwIfAborted();this.catalogue=catalogue;this.cataloguePath=path;this.searchResults=searchCatalogue(catalogue,'');
+      this.status=`Loaded ${catalogue.entries.length} shared catalogue entries.`;if(!quiet)await this.render();
+    } finally {if(this.indexController===controller){this.indexController=null;this.syncBusyControls();}}
   }
   async searchLibrary() {
     if(!this.catalogue)throw new Error('Load or index the shared catalogue first.');
@@ -293,14 +343,20 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     for(const card of this.element?.querySelectorAll('[data-palette-id]')??[]) {
       const a=palette.find(a=>a.id===card.dataset.paletteId);if(!a)throw new Error('Palette changed; reopen the window.');
       const get=key=>card.querySelector(`[data-field="${key}"]`);
-      a.kind=get('kind').value;a.width=Number(get('width').value);a.height=a.width*a.pixelHeight/a.pixelWidth;
-      a.anchorY=Number(get('anchorY').value);a.confirmed=get('confirmed').checked;
+      const kind=get('kind').value,width=Number(get('width').value),anchorY=Number(get('anchorY').value);
+      if(a.kind!==kind||a.width!==width||a.anchorY!==anchorY)delete a.calibration;
+      Object.assign(a,{kind,width,height:width===a.width?a.height:width*a.pixelHeight/a.pixelWidth,anchorY,confirmed:get('confirmed').checked});
     }
     return validatePalette(palette,{requireConfirmed:false});
   }
   async applyPalette() {
-    this.workflow.palette=this.readPaletteFields();this.workflow.assetRequest=null;this.workflow.assetRepair=null;
-    this.invalidate('Palette saved locally. Copy a fresh design request to use it.');await this.persistLocal();await this.render();
+    this.workflow.palette=this.readPaletteFields();this.workflow.assetSelection='manual';this.workflow.assetRequest=null;this.workflow.assetRepair=null;
+    this.inputRevision++;this.invalidate('Manual overrides enabled. Prepare a fresh request to use this palette.');await this.persistLocal();await this.render();
+  }
+  async useAutomaticAssets() {
+    this.workflow.assetSelection='automatic';this.workflow.assetRequest=null;this.workflow.assetRepair=null;
+    this.inputRevision++;this.invalidate('Automatic selection enabled. Prepare a fresh request for your brief.');
+    await this.persistLocal();await this.changeStage('describe');
   }
   async addPaletteAsset(target) {
     const entry=this.catalogue?.entries.find(a=>a.id===target.dataset.id);
@@ -319,57 +375,108 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
     this.workflow.assetRequest=null;this.workflow.assetRepair=null;this.invalidate('Palette changed. Copy a fresh design request.');
     await this.persistLocal();await this.render();
   }
-  async newProject() {this.clearPending();this.workflow=blankWorkflow();this.renderingDirty=false;await this.persistLocal();await this.render();}
+  async newProject() {this.clearPending();this.workflow=blankWorkflow();this.renderingDirty=false;this.setupOpen=false;await this.persistLocal();await this.changeStage('describe','[name="sceneName"]');}
   async reopen() {
     const id=this.element.querySelector('[name="projectId"]').value;if(!id)return;
     const workflow=projectFromScene(game.scenes.get(id));workflow.plan=checkedPlan(workflow.plan);workflow.map=durableMap(workflow.map);
     this.clearPending();this.workflow=validatedWorkflow({...blankWorkflow(),...workflow,built:true});
     if(this.plan.assetScene)this.workflow.palette=structuredClone(this.plan.assetScene.palette);
     this.status='Saved project reopened. Original source and rendering settings retained. Any unsaved local image must be reselected; preview and inspect again.';
-    await this.persistLocal();await this.render();
+    await this.persistLocal();await this.changeStage('preview');
   }
   async copyLayoutPrompt() {
+    const form=readForm(this),revision=this.inputRevision,epoch=this.epoch;
+    Object.assign(this.workflow,form);
     if(this.workflow.mode==='assets') {
-      const form=readForm(this),palette=this.readPaletteFields(),request=createAssetRequest(form,palette);
-      Object.assign(this.workflow,form,{palette,assetRequest:request,assetRepair:null});
-      const copied=await copyText(assetDesignPrompt(request));this.workflow.intentPromptCopiedAt=Date.now();
-      this.status=copied?'Design request copied. Paste the text-model JSON response; no image generation is required.':
-        'Clipboard unavailable. Copy the visible asset design request, then import the text-model JSON response.';
-      await this.persistLocal();await this.render();return;
+      let palette,summary='';
+      const assertCurrent=()=>{
+        if(this.closed||epoch!==this.epoch||revision!==this.inputRevision||JSON.stringify(form)!==JSON.stringify(readForm(this)))
+          throw new Error('Design inputs changed during preparation. Prepare a fresh request.');
+      };
+      if(this.workflow.assetSelection==='automatic') {
+        if(!game.settings.get(MODULE_ID,'assetCatalogue')){await this.openSetup();this.status='Connect a library once, then assets will be selected automatically.';await this.render();return;}
+        if(!this.catalogue||this.cataloguePath!==game.settings.get(MODULE_ID,'assetCatalogue'))await this.loadLibrary({quiet:true});
+        assertCurrent();
+        const controller=new AbortController();this.indexController=controller;this.syncBusyControls();
+        try {
+          const known=[...this.workflow.palette];
+          for(const scene of game.scenes)for(const a of scene.getFlag(MODULE_ID,'plan')?.assetScene?.palette??[])
+            if(!known.some(k=>k.src===a.src))known.push(a);
+          const result=await prepareAssetPalette(this.catalogue,`${form.sceneName} ${form.brief}`,{
+            known,imageLoader:loadImage,signal:controller.signal,onProgress:p=>this.libraryProgress(p)});
+          controller.signal.throwIfAborted();assertCurrent();palette=result.palette;summary=[result.summary.message,...result.summary.warnings].join(' ');
+          if(result.skipped.length)console.info(`${MODULE_ID} | Automatic selection skipped candidates`,result.skipped);
+        } finally {if(this.indexController===controller){this.indexController=null;this.syncBusyControls();}}
+      } else {palette=this.readPaletteFields();summary=`Using ${palette.length} manual asset overrides.`;}
+      const request=createAssetRequest(form,palette),copied=await copyText(assetDesignPrompt(request),{inline:true});
+      assertCurrent();
+      Object.assign(this.workflow,form,{palette,assetSummary:summary,assetRequest:request,assetRepair:null,responseText:''});
+      this.workflow.intentPromptCopiedAt=Date.now();
+      this.status=copied?'Request copied. Give it to your text AI, then paste its JSON response below.':
+        'Clipboard unavailable. Copy the request below manually, then paste your text AI response.';
+      await this.persistLocal();await this.changeStage('design','[name="responseText"]');return;
     }
-    Object.assign(this.workflow,readForm(this));await copyText(buildSceneIntentPrompt({...this.workflow,animations:lightAnimationKeys()}));
-    this.workflow.intentPromptCopiedAt=Date.now();await this.persistLocal();await this.render();
+    await copyText(buildSceneIntentPrompt({...this.workflow,animations:lightAnimationKeys()}),{inline:true});
+    this.workflow.intentPromptCopiedAt=Date.now();await this.persistLocal();await this.changeStage('design','[name="responseText"]');
+  }
+  async copyPreparedRequest() {
+    const text=this.workflow.mode==='assets'?assetDesignPrompt(this.workflow.assetRequest,this.workflow.assetRepair):
+      buildSceneIntentPrompt({...this.workflow,animations:lightAnimationKeys()});
+    const copied=await copyText(text,{inline:true});
+    this.status=copied?'Request copied. Paste it into your text AI.':'Clipboard unavailable. Select and copy the visible request manually.';
+    await this.render();
   }
   async copyLegacyLayoutPrompt() {await copyText(buildLayoutPrompt(readForm(this),lightAnimationKeys()));}
   async copyPlanRepairPrompt() {
     if(this.workflow.mode==='assets') {
       if(!this.workflow.assetRequest||!this.workflow.assetRepair)throw new Error('Import a response for the current asset request before requesting a correction.');
-      await copyText(assetDesignPrompt(this.workflow.assetRequest,this.workflow.assetRepair));return;
+      await this.copyPreparedRequest();return;
     }
     if(!this.workflow.planRepair)throw new Error('There is no rejected advanced plan to repair.');
     await copyText(buildPlanRepairPrompt(readForm(this),this.workflow.planRepair,lightAnimationKeys()));
   }
   async pastePlan(target) {
     const advanced=target?.dataset.mode==='advanced',form=readForm(this);
-    const assets=this.workflow.mode==='assets'&&!advanced;
-    const request=this.workflow.assetRequest;
-    if(assets) {
-      if(!request)throw new Error('Copy an asset design request first.');
-      const current=createAssetRequest(form,this.readPaletteFields(),request.id);
-      if(JSON.stringify(current)!==JSON.stringify(request))throw new Error('The brief, dimensions or palette changed. Copy a fresh request.');
-    }
-    const result=await DialogV2.input({window:{title:advanced?'Import or edit low-level plan':'Import generated scene design'},
-      content:`<p>${advanced?'Changes start a local project and preserve the old scene.':assets?'Paste the complete asset design response JSON, including requestId. No scene is created yet.':'Paste the coordinate-free scene-intent JSON. Build remains local; no Foundry scene is created.'}</p><textarea name="json" aria-label="Scene design JSON" style="width:100%;height:400px">${esc(advanced?(this.workflow.planRepair?.json??(this.plan?JSON.stringify(this.plan,null,2):'')):(this.workflow.assetRepair?.json??''))}</textarea>`,
+    if(!advanced){await this.acceptDesign();return;}
+    const result=await DialogV2.input({window:{title:'Import or edit low-level plan'},
+      content:`<p>Changes start a local project and preserve the old scene.</p><textarea name="json" aria-label="Scene design JSON" style="width:100%;height:400px">${esc(this.workflow.planRepair?.json??(this.plan?JSON.stringify(this.plan,null,2):''))}</textarea>`,
       ok:{label:'Validate and import'},rejectClose:false});
     if(!result?.json)return;
     let plan;
-    try {const parsed=assets?null:JSON.parse(result.json);plan=assets?checkedPlan(importAssetResponse(result.json,request)):advanced?checkedPlan(parsed,form):checkedPlan(compileSceneIntent(parsed,form));}
+    try {plan=checkedPlan(JSON.parse(result.json),form);}
     catch(error) {
-      if(assets){this.workflow.assetRepair={json:result.json,error:error.message};await this.persistLocal();await this.render();}
-      if(advanced) {this.workflow.planRepair={json:result.json,error:error.message};await this.persistLocal();await this.render();}
+      this.workflow.planRepair={json:result.json,error:error.message};await this.persistLocal();await this.render();
       throw error;
     }
     this.usePlan(plan);this.renderingDirty=false;await this.persistLocal();await this.render();
+  }
+  async acceptDesign() {
+    const form=readForm(this),assets=this.workflow.mode==='assets',request=this.workflow.assetRequest;
+    const json=this.element.querySelector('[name="responseText"]')?.value??this.workflow.responseText;
+    this.workflow.responseText=json;
+    let plan;
+    try {
+      if(!json.trim())throw new Error('Paste the complete JSON response from your text AI.');
+      if(assets) {
+        if(!request)throw new Error('Prepare a fresh design request first.');
+        const current=createAssetRequest(form,this.readPaletteFields(),request.id);
+        if(JSON.stringify(current)!==JSON.stringify(request))throw new Error('The brief, dimensions or palette changed. Prepare a fresh request.');
+        plan=checkedPlan(importAssetResponse(json,request));
+      } else {
+        if(json.length>1_000_000)throw new Error('Paste JSON text up to 1 MB.');
+        plan=checkedPlan(compileSceneIntent(JSON.parse(json),form));
+      }
+    } catch(error) {
+      if(assets&&request)this.workflow.assetRepair={json,error:error.message};
+      this.stage='design';await this.persistLocal();await this.render();throw error;
+    }
+    const {assetSelection,assetSummary}=this.workflow;
+    this.usePlan(plan);
+    Object.assign(this.workflow,form,{assetSelection,assetSummary,responseText:json,assetRequest:request,built:true});
+    this.focusTarget='[data-stage="preview"] h2';
+    await this.persistLocal();await this.render();
+    if(assets)await this.previewArtwork();
+    else {this.status='Design accepted. Generate artwork from the reference, then preview it here.';await this.render();}
   }
   async loadExample() {
     const response=await fetch(`modules/${MODULE_ID}/fixtures/intents/laboratory.json`);
@@ -414,6 +521,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       if(signature!==this.signature())throw new Error('Plan changed during rendering. Preview again.');
       this.selectedFile=null;this.preview={...composition,image:composition.canvas,blob,file:null,src:null,signature};
       this.status='Inspect the deterministic asset render. Native geometry uses this same plan; door artwork is a static threshold.';
+      this.focusTarget='[data-stage="preview"] h2';
       await this.persistLocal();await this.render();return;
     }
     const signature=this.signature(),file=this.selectedFile,src=file?URL.createObjectURL(file):this.workflow.map?.src;
@@ -424,6 +532,7 @@ export class SceneArchitectApp extends HandlebarsApplicationMixin(ApplicationV2)
       if(signature!==this.signature()||file!==this.selectedFile)throw new Error('Artwork or settings changed during preview. Preview again.');
       this.preview={...composition,image,blob,file,src:file?null:src,signature};
       this.status='Inspect the exact clean composite below, including entrances and major features. Confirm visual inspection before creating or updating.';
+      this.focusTarget='[data-stage="preview"] h2';
       await this.persistLocal();await this.render();
     } finally {if(file&&src)URL.revokeObjectURL(src);}
   }
